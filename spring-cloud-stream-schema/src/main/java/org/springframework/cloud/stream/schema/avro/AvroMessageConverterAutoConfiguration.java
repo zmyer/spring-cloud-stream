@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,11 @@ package org.springframework.cloud.stream.schema.avro;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.cloud.stream.binder.StringConvertingContentTypeResolver;
 import org.springframework.cloud.stream.schema.client.SchemaRegistryClient;
 import org.springframework.context.annotation.Bean;
@@ -35,17 +38,17 @@ import org.springframework.util.ObjectUtils;
 @ConditionalOnClass(name = "org.apache.avro.Schema")
 @ConditionalOnProperty(value = "spring.cloud.stream.schemaRegistryClient.enabled", matchIfMissing = true)
 @ConditionalOnBean(type = "org.springframework.cloud.stream.schema.client.SchemaRegistryClient")
-@EnableConfigurationProperties(AvroMessageConverterProperties.class)
+@EnableConfigurationProperties({ AvroMessageConverterProperties.class })
 public class AvroMessageConverterAutoConfiguration {
 
 	@Autowired
 	private AvroMessageConverterProperties avroMessageConverterProperties;
 
 	@Bean
+	@ConditionalOnMissingBean(AvroSchemaRegistryClientMessageConverter.class)
 	public AvroSchemaRegistryClientMessageConverter avroSchemaMessageConverter(
 			SchemaRegistryClient schemaRegistryClient) {
-		AvroSchemaRegistryClientMessageConverter
-				avroSchemaRegistryClientMessageConverter = new AvroSchemaRegistryClientMessageConverter(
+		AvroSchemaRegistryClientMessageConverter avroSchemaRegistryClientMessageConverter = new AvroSchemaRegistryClientMessageConverter(
 				schemaRegistryClient);
 		avroSchemaRegistryClientMessageConverter.setDynamicSchemaGenerationEnabled(
 				this.avroMessageConverterProperties.isDynamicSchemaGenerationEnabled());
@@ -59,6 +62,13 @@ public class AvroMessageConverterAutoConfiguration {
 					this.avroMessageConverterProperties.getSchemaLocations());
 		}
 		avroSchemaRegistryClientMessageConverter.setPrefix(this.avroMessageConverterProperties.getPrefix());
+		avroSchemaRegistryClientMessageConverter.setCacheManager(cacheManager());
 		return avroSchemaRegistryClientMessageConverter;
+	}
+
+	@Bean
+	@ConditionalOnMissingBean
+	public CacheManager cacheManager() {
+		return new ConcurrentMapCacheManager();
 	}
 }

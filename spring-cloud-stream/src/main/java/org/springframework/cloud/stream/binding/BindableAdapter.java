@@ -26,21 +26,20 @@ import java.util.Set;
  */
 public class BindableAdapter implements Bindable {
 
-
 	@Override
-	public void bindInputs(ChannelBindingService adapter) {
+	public void bindInputs(BindingService adapter) {
 	}
 
 	@Override
-	public void bindOutputs(ChannelBindingService adapter) {
+	public void bindOutputs(BindingService adapter) {
 	}
 
 	@Override
-	public void unbindInputs(ChannelBindingService adapter) {
+	public void unbindInputs(BindingService adapter) {
 	}
 
 	@Override
-	public void unbindOutputs(ChannelBindingService adapter) {
+	public void unbindOutputs(BindingService adapter) {
 	}
 
 	@Override

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 the original author or authors.
+ * Copyright 2015-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.cloud.stream.annotation.Bindings;
 import org.springframework.cloud.stream.annotation.EnableBinding;
 import org.springframework.cloud.stream.binder.Binder;
 import org.springframework.cloud.stream.binder.BinderFactory;
@@ -33,6 +32,7 @@ import org.springframework.cloud.stream.messaging.Source;
 import org.springframework.cloud.stream.utils.MockBinderRegistryConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.PropertySource;
+import org.springframework.messaging.MessageChannel;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
 import static org.hamcrest.Matchers.equalTo;
@@ -53,13 +53,12 @@ public class PartitionedProducerTest {
 	private BinderFactory binderFactory;
 
 	@Autowired
-	@Bindings(TestSource.class)
 	private Source testSource;
 
 	@Test
 	@SuppressWarnings("unchecked")
 	public void testBindingPartitionedProducer() {
-		Binder binder = this.binderFactory.getBinder(null);
+		Binder binder = this.binderFactory.getBinder(null, MessageChannel.class);
 		ArgumentCaptor<ProducerProperties> argumentCaptor = ArgumentCaptor.forClass(ProducerProperties.class);
 		verify(binder).bindProducer(eq("partOut"), eq(this.testSource.output()), argumentCaptor.capture());
 		Assert.assertThat(argumentCaptor.getValue().getPartitionCount(), equalTo(3));
@@ -68,7 +67,6 @@ public class PartitionedProducerTest {
 		verifyNoMoreInteractions(binder);
 	}
 
-
 	@EnableBinding(Source.class)
 	@EnableAutoConfiguration
 	@Import(MockBinderRegistryConfiguration.class)
@@ -76,5 +74,4 @@ public class PartitionedProducerTest {
 	public static class TestSource {
 
 	}
-
 }

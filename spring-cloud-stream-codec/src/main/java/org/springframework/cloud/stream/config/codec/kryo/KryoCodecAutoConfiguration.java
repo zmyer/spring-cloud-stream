@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 the original author or authors.
+ * Copyright 2015-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,7 +33,6 @@ import org.springframework.integration.codec.kryo.FileKryoRegistrar;
 import org.springframework.integration.codec.kryo.KryoRegistrar;
 import org.springframework.integration.codec.kryo.PojoCodec;
 
-
 /**
  * Auto configures {@link PojoCodec} if Kryo is on the class path.
  * @author David Turanski
@@ -51,13 +50,14 @@ public class KryoCodecAutoConfiguration {
 	KryoCodecProperties kryoCodecProperties;
 
 	@Bean
+	@ConditionalOnMissingBean(PojoCodec.class)
 	public PojoCodec codec() {
-		Map<String, KryoRegistrar> kryoRegistrarMap = applicationContext.getBeansOfType(KryoRegistrar
-				.class);
+		Map<String, KryoRegistrar> kryoRegistrarMap = applicationContext.getBeansOfType(KryoRegistrar.class);
 		return new PojoCodec(new ArrayList<>(kryoRegistrarMap.values()), kryoCodecProperties.isReferences());
 	}
 
 	@Bean
+	@ConditionalOnMissingBean(KryoRegistrar.class)
 	public KryoRegistrar fileRegistrar() {
 		return new FileKryoRegistrar();
 	}

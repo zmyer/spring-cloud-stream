@@ -16,11 +16,12 @@
 
 package org.springframework.cloud.stream.reactive;
 
-import reactor.adapter.RxJava1Adapter;
+import org.reactivestreams.Publisher;
+import reactor.core.publisher.Flux;
 import rx.Observable;
+import rx.RxReactiveStreams;
 import rx.Single;
 
-import org.springframework.cloud.stream.annotation.Output;
 import org.springframework.cloud.stream.binding.StreamListenerParameterAdapter;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.ResolvableType;
@@ -44,25 +45,24 @@ public class MessageChannelToObservableSenderParameterAdapter implements
 	}
 
 	@Override
-	public boolean supports(Class<?> boundElementType, MethodParameter methodParameter) {
+	public boolean supports(Class<?> bindingTargetType, MethodParameter methodParameter) {
 		ResolvableType type = ResolvableType.forMethodParameter(methodParameter);
-		return MessageChannel.class.isAssignableFrom(boundElementType)
-				&& methodParameter.getParameterAnnotation(Output.class) != null
+		return MessageChannel.class.isAssignableFrom(bindingTargetType)
 				&& ObservableSender.class.isAssignableFrom(type.getRawClass());
 	}
 
 	@Override
-	public ObservableSender adapt(MessageChannel boundElement, MethodParameter parameter) {
+	public ObservableSender adapt(MessageChannel bindingTarget, MethodParameter parameter) {
 		return new ObservableSender() {
 
-			private FluxSender fluxSender = MessageChannelToObservableSenderParameterAdapter.this
-					.messageChannelToFluxSenderArgumentAdapter
-					.adapt(boundElement, parameter);
+			private FluxSender fluxSender = MessageChannelToObservableSenderParameterAdapter.this.messageChannelToFluxSenderArgumentAdapter
+					.adapt(bindingTarget, parameter);
 
 			@Override
 			public Single<Void> send(Observable<?> observable) {
-				return RxJava1Adapter.publisherToSingle(
-						this.fluxSender.send(RxJava1Adapter.observableToFlux(observable)));
+				Publisher<?> adaptedPublisher = RxReactiveStreams.toPublisher(observable);
+				return RxReactiveStreams.toSingle(
+						this.fluxSender.send(Flux.from(adaptedPublisher)));
 			}
 		};
 	}

@@ -49,6 +49,8 @@ import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 
 /**
+ * Base class for {@link Binder} implementations.
+ *
  * @author David Turanski
  * @author Gary Russell
  * @author Ilayaperumal Gopinathan
@@ -59,17 +61,18 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 		implements ApplicationContextAware, InitializingBean, Binder<T, C, P> {
 
 	/**
-	 * The delimiter between a group and index when constructing a binder consumer/producer.
+	 * The delimiter between a group and index when constructing a binder
+	 * consumer/producer.
 	 */
 	private static final String GROUP_INDEX_DELIMITER = ".";
 
 	protected final Log logger = LogFactory.getLog(getClass());
 
+	private final StringConvertingContentTypeResolver contentTypeResolver = new StringConvertingContentTypeResolver();
+
 	private volatile AbstractApplicationContext applicationContext;
 
 	private volatile Codec codec;
-
-	private final StringConvertingContentTypeResolver contentTypeResolver = new StringConvertingContentTypeResolver();
 
 	private volatile EvaluationContext evaluationContext;
 
@@ -77,30 +80,32 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 
 	/**
 	 * For binder implementations that support a prefix, apply the prefix to the name.
+	 *
 	 * @param prefix the prefix.
-	 * @param name   the name.
+	 * @param name the name.
 	 */
 	public static String applyPrefix(String prefix, String name) {
 		return prefix + name;
 	}
 
 	/**
-	 * For binder implementations that support dead lettering, construct the name of the dead letter entity for the
-	 * underlying pipe name.
+	 * For binder implementations that support dead lettering, construct the name of the
+	 * dead letter entity for the underlying pipe name.
+	 *
 	 * @param name the name.
 	 */
 	public static String constructDLQName(String name) {
 		return name + ".dlq";
 	}
 
+	protected AbstractApplicationContext getApplicationContext() {
+		return this.applicationContext;
+	}
+
 	@Override
 	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
 		Assert.isInstanceOf(AbstractApplicationContext.class, applicationContext);
 		this.applicationContext = (AbstractApplicationContext) applicationContext;
-	}
-
-	protected AbstractApplicationContext getApplicationContext() {
-		return this.applicationContext;
 	}
 
 	protected ConfigurableListableBeanFactory getBeanFactory() {
@@ -125,8 +130,8 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 	}
 
 	/**
-	 * Subclasses may implement this method to perform any necessary initialization.
-	 * It will be invoked from {@link #afterPropertiesSet()} which is itself {@code final}.
+	 * Subclasses may implement this method to perform any necessary initialization. It
+	 * will be invoked from {@link #afterPropertiesSet()} which is itself {@code final}.
 	 */
 	protected void onInit() throws Exception {
 		// no-op default
@@ -135,8 +140,7 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 	@Override
 	public final Binding<T> bindConsumer(String name, String group, T target, C properties) {
 		if (StringUtils.isEmpty(group)) {
-			Assert.isTrue(!properties.isPartitioned(),
-					"A consumer group is required for a partitioned subscription");
+			Assert.isTrue(!properties.isPartitioned(), "A consumer group is required for a partitioned subscription");
 		}
 		return doBindConsumer(name, group, target, properties);
 	}
@@ -152,7 +156,8 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 
 	/**
 	 * Construct a name comprised of the name and group.
-	 * @param name  the name.
+	 *
+	 * @param name the name.
 	 * @param group the group.
 	 * @return the constructed name.
 	 */
@@ -160,11 +165,12 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 		return name + GROUP_INDEX_DELIMITER + (StringUtils.hasText(group) ? group : "default");
 	}
 
-	final MessageValues serializePayloadIfNecessary(Message<?> message) {
+	protected final MessageValues serializePayloadIfNecessary(Message<?> message) {
 		Object originalPayload = message.getPayload();
 		Object originalContentType = message.getHeaders().get(MessageHeaders.CONTENT_TYPE);
 
-		//Pass content type as String since some transport adapters will exclude CONTENT_TYPE Header otherwise
+		// Pass content type as String since some transport adapters will exclude
+		// CONTENT_TYPE Header otherwise
 		Object contentType = JavaClassMimeTypeConversion
 				.mimeTypeFromObject(originalPayload, ObjectUtils.nullSafeToString(originalContentType)).toString();
 		Object payload = serializePayloadIfNecessary(originalPayload);
@@ -177,7 +183,7 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 		return messageValues;
 	}
 
-	private byte[] serializePayloadIfNecessary(Object originalPayload) {
+	protected final byte[] serializePayloadIfNecessary(Object originalPayload) {
 		if (originalPayload instanceof byte[]) {
 			return (byte[]) originalPayload;
 		}
@@ -191,24 +197,25 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 				return bos.toByteArray();
 			}
 			catch (IOException e) {
-				throw new SerializationFailedException("unable to serialize payload ["
-						+ originalPayload.getClass().getName() + "]", e);
+				throw new SerializationFailedException(
+						"unable to serialize payload [" + originalPayload.getClass().getName() + "]", e);
 			}
 		}
 	}
 
-	final MessageValues deserializePayloadIfNecessary(Message<?> message) {
+	protected final MessageValues deserializePayloadIfNecessary(Message<?> message) {
 		return deserializePayloadIfNecessary(new MessageValues(message));
 	}
 
-	final MessageValues deserializePayloadIfNecessary(MessageValues messageValues) {
+	protected final MessageValues deserializePayloadIfNecessary(MessageValues messageValues) {
 		Object originalPayload = messageValues.getPayload();
 		MimeType contentType = this.contentTypeResolver.resolve(messageValues);
 		Object payload = deserializePayload(originalPayload, contentType);
 		if (payload != null) {
 			messageValues.setPayload(payload);
 			Object originalContentType = messageValues.get(BinderHeaders.BINDER_ORIGINAL_CONTENT_TYPE);
-			// Reset content-type only if the original content type is not null (when receiving messages from
+			// Reset content-type only if the original content type is not null (when
+			// receiving messages from
 			// non-SCSt applications).
 			if (originalContentType != null) {
 				messageValues.put(MessageHeaders.CONTENT_TYPE, originalContentType);
@@ -236,8 +243,10 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 				return new String(bytes, "UTF-8");
 			}
 			catch (UnsupportedEncodingException e) {
-				throw new SerializationFailedException("unable to deserialize [java.lang.String]. Encoding not supported.",
-						e);
+				String errorMessage = "unable to deserialize [java.lang.String]. Encoding not supported. "
+						+ e.getMessage();
+				logger.error(errorMessage);
+				throw new SerializationFailedException(errorMessage, e);
 			}
 		}
 		else {
@@ -250,13 +259,12 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 					this.payloadTypeCache.put(className, targetType);
 				}
 				return this.codec.decode(bytes, targetType);
-			}
-			catch (ClassNotFoundException e) {
-				throw new SerializationFailedException("unable to deserialize [" + className + "]. Class not found.",
-						e); //NOSONAR
-			}
-			catch (IOException e) {
-				throw new SerializationFailedException("unable to deserialize [" + className + "]", e);
+			} // catch all exceptions that could occur during de-serialization
+			catch (Exception e) {
+				String errorMessage = "Unable to deserialize [" + className + "] using the contentType [" + contentType
+						+ "] " + e.getMessage();
+				logger.error(errorMessage);
+				throw new SerializationFailedException(errorMessage, e);
 			}
 		}
 	}
@@ -267,6 +275,7 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 
 	/**
 	 * Create and configure a retry template.
+	 *
 	 * @param properties The properties.
 	 * @return The retry template
 	 */
@@ -307,7 +316,8 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 			if (mimeType == null) {
 				String modifiedClassName = className;
 				if (payload.getClass().isArray()) {
-					// Need to remove trailing ';' for an object array, e.g. "[Ljava.lang.String;" or multi-dimensional
+					// Need to remove trailing ';' for an object array, e.g.
+					// "[Ljava.lang.String;" or multi-dimensional
 					// "[[[Ljava.lang.String;"
 					if (modifiedClassName.endsWith(";")) {
 						modifiedClassName = modifiedClassName.substring(0, modifiedClassName.length() - 1);
@@ -327,7 +337,7 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 			if (className == null) {
 				return null;
 			}
-			//unwrap quotes if any
+			// unwrap quotes if any
 			className = className.replace("\"", "");
 
 			// restore trailing ';'

@@ -19,18 +19,20 @@ package org.springframework.cloud.stream.test.binder;
 import org.springframework.boot.autoconfigure.AutoConfigureOrder;
 import org.springframework.cloud.stream.binder.Binder;
 import org.springframework.cloud.stream.binder.BinderFactory;
+import org.springframework.cloud.stream.binder.ConsumerProperties;
+import org.springframework.cloud.stream.binder.ProducerProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.messaging.MessageChannel;
 
 /**
- * Installs the {@link TestSupportBinder} and exposes {@link TestSupportBinder.MessageCollectorImpl} to be injected in
- * tests.
+ * Installs the {@link TestSupportBinder} and exposes
+ * {@link TestSupportBinder.MessageCollectorImpl} to be injected in tests.
  *
- * Note that this auto-configuration has higher priority than regular binder configuration, so adding
- * this on the classpath in test scope is sufficient to have support kick in and replace all binders
- * with the test binder.
+ * Note that this auto-configuration has higher priority than regular binder
+ * configuration, so adding this on the classpath in test scope is sufficient to have
+ * support kick in and replace all binders with the test binder.
  *
  * @author Eric Bottard
  * @author Marius Bogoevici
@@ -45,15 +47,16 @@ public class TestSupportBinderAutoConfiguration {
 	public BinderFactory binderFactory() {
 		return new BinderFactory() {
 			@Override
-			public Binder getBinder(String configurationName) {
-				return messageChannelBinder;
+			public <T> Binder<T, ? extends ConsumerProperties, ? extends ProducerProperties> getBinder(
+					String configurationName, Class<? extends T> bindableType) {
+				return (Binder<T, ? extends ConsumerProperties, ? extends ProducerProperties>) messageChannelBinder;
 			}
 		};
 	}
 
 	@Bean
-	public MessageCollector messageCollector(BinderFactory<MessageChannel> binderFactory) {
-		return ((TestSupportBinder) binderFactory.getBinder(null)).messageCollector();
+	public MessageCollector messageCollector(BinderFactory binderFactory) {
+		return ((TestSupportBinder) binderFactory.getBinder(null, MessageChannel.class)).messageCollector();
 	}
 
 }

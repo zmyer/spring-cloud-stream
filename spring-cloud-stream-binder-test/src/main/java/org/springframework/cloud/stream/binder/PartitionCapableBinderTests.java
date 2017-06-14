@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2016 the original author or authors.
+ * Copyright 2014-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,8 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Mark Fisher
  * @author Marius Bogoevici
  */
-public abstract class PartitionCapableBinderTests<B extends AbstractTestBinder<? extends
-		AbstractBinder<MessageChannel, CP, PP>, CP, PP>, CP extends ConsumerProperties, PP extends ProducerProperties>
+public abstract class PartitionCapableBinderTests<B extends AbstractTestBinder<? extends AbstractBinder<MessageChannel, CP, PP>, CP, PP>, CP extends ConsumerProperties, PP extends ProducerProperties>
 		extends AbstractBinderTests<B, CP, PP> {
 
 	protected static final SpelExpressionParser spelExpressionParser = new SpelExpressionParser();
@@ -174,15 +173,15 @@ public abstract class PartitionCapableBinderTests<B extends AbstractTestBinder<?
 		consumerProperties.setPartitioned(true);
 		QueueChannel input0 = new QueueChannel();
 		input0.setBeanName("test.input0S");
-		Binding<MessageChannel> input0Binding = binder.bindConsumer("part.0", "test", input0, consumerProperties);
+		Binding<MessageChannel> input0Binding = binder.bindConsumer("part.0", "testPartitionedModuleSpEL", input0, consumerProperties);
 		consumerProperties.setInstanceIndex(1);
 		QueueChannel input1 = new QueueChannel();
 		input1.setBeanName("test.input1S");
-		Binding<MessageChannel> input1Binding = binder.bindConsumer("part.0", "test", input1, consumerProperties);
+		Binding<MessageChannel> input1Binding = binder.bindConsumer("part.0", "testPartitionedModuleSpEL", input1, consumerProperties);
 		consumerProperties.setInstanceIndex(2);
 		QueueChannel input2 = new QueueChannel();
 		input2.setBeanName("test.input2S");
-		Binding<MessageChannel> input2Binding = binder.bindConsumer("part.0", "test", input2, consumerProperties);
+		Binding<MessageChannel> input2Binding = binder.bindConsumer("part.0", "testPartitionedModuleSpEL", input2, consumerProperties);
 
 		PP producerProperties = createProducerProperties();
 		producerProperties.setPartitionKeyExpression(spelExpressionParser.parseExpression("payload"));
@@ -194,8 +193,7 @@ public abstract class PartitionCapableBinderTests<B extends AbstractTestBinder<?
 		Binding<MessageChannel> outputBinding = binder.bindProducer("part.0", output, producerProperties);
 		try {
 			Object endpoint = extractEndpoint(outputBinding);
-			assertThat(getEndpointRouting(endpoint))
-					.contains(getExpectedRoutingBaseDestination("part.0", "test") + "-' + headers['partition']");
+			checkRkExpressionForPartitionedModuleSpEL(endpoint);
 		}
 		catch (UnsupportedOperationException ignored) {
 		}
@@ -249,6 +247,11 @@ public abstract class PartitionCapableBinderTests<B extends AbstractTestBinder<?
 		outputBinding.unbind();
 	}
 
+	protected void checkRkExpressionForPartitionedModuleSpEL(Object endpoint) {
+		assertThat(getEndpointRouting(endpoint))
+				.contains(getExpectedRoutingBaseDestination("part.0", "test") + "-' + headers['partition']");
+	}
+
 	@Test
 	public void testPartitionedModuleJava() throws Exception {
 		B binder = getBinder();
@@ -260,15 +263,15 @@ public abstract class PartitionCapableBinderTests<B extends AbstractTestBinder<?
 		consumerProperties.setPartitioned(true);
 		QueueChannel input0 = new QueueChannel();
 		input0.setBeanName("test.input0J");
-		Binding<MessageChannel> input0Binding = binder.bindConsumer("partJ.0", "test", input0, consumerProperties);
+		Binding<MessageChannel> input0Binding = binder.bindConsumer("partJ.0", "testPartitionedModuleJava", input0, consumerProperties);
 		consumerProperties.setInstanceIndex(1);
 		QueueChannel input1 = new QueueChannel();
 		input1.setBeanName("test.input1J");
-		Binding<MessageChannel> input1Binding = binder.bindConsumer("partJ.0", "test", input1, consumerProperties);
+		Binding<MessageChannel> input1Binding = binder.bindConsumer("partJ.0", "testPartitionedModuleJava", input1, consumerProperties);
 		consumerProperties.setInstanceIndex(2);
 		QueueChannel input2 = new QueueChannel();
 		input2.setBeanName("test.input2J");
-		Binding<MessageChannel> input2Binding = binder.bindConsumer("partJ.0", "test", input2, consumerProperties);
+		Binding<MessageChannel> input2Binding = binder.bindConsumer("partJ.0", "testPartitionedModuleJava", input2, consumerProperties);
 
 		PP producerProperties = createProducerProperties();
 		producerProperties.setPartitionKeyExtractorClass(PartitionTestSupport.class);
@@ -279,8 +282,8 @@ public abstract class PartitionCapableBinderTests<B extends AbstractTestBinder<?
 		Binding<MessageChannel> outputBinding = binder.bindProducer("partJ.0", output, producerProperties);
 		if (usesExplicitRouting()) {
 			Object endpoint = extractEndpoint(outputBinding);
-			assertThat(getEndpointRouting(endpoint)).
-					contains(getExpectedRoutingBaseDestination("partJ.0", "test") + "-' + headers['partition']");
+			assertThat(getEndpointRouting(endpoint)).contains(getExpectedRoutingBaseDestination("partJ.0", "testPartitionedModuleJava")
+					+ "-' + headers['" + BinderHeaders.PARTITION_HEADER + "']");
 		}
 
 		output.send(new GenericMessage<>(2));
@@ -339,6 +342,6 @@ public abstract class PartitionCapableBinderTests<B extends AbstractTestBinder<?
 
 	protected Lifecycle extractEndpoint(Binding<MessageChannel> binding) {
 		DirectFieldAccessor accessor = new DirectFieldAccessor(binding);
-		return (Lifecycle) accessor.getPropertyValue("endpoint");
+		return (Lifecycle) accessor.getPropertyValue("lifecycle");
 	}
 }

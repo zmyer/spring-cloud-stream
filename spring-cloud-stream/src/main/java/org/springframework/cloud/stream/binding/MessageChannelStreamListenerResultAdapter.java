@@ -21,23 +21,24 @@ import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.SubscribableChannel;
 
 /**
- * A {@link StreamListenerResultAdapter} used for bridging an {@link org.springframework.cloud.stream.annotation.Output}
- * {@link MessageChannel} to a bound {@link MessageChannel}.
+ * A {@link StreamListenerResultAdapter} used for bridging an
+ * {@link org.springframework.cloud.stream.annotation.Output} {@link MessageChannel} to a
+ * bound {@link MessageChannel}.
  * @author Marius Bogoevici
  */
 public class MessageChannelStreamListenerResultAdapter
 		implements StreamListenerResultAdapter<MessageChannel, MessageChannel> {
 
 	@Override
-	public boolean supports(Class<?> resultType, Class<?> boundElement) {
+	public boolean supports(Class<?> resultType, Class<?> bindingTarget) {
 		return MessageChannel.class.isAssignableFrom(resultType)
-				&& MessageChannel.class.isAssignableFrom(boundElement);
+				&& MessageChannel.class.isAssignableFrom(bindingTarget);
 	}
 
 	@Override
-	public void adapt(MessageChannel streamListenerResult, MessageChannel boundElement) {
+	public void adapt(MessageChannel streamListenerResult, MessageChannel bindingTarget) {
 		BridgeHandler handler = new BridgeHandler();
-		handler.setOutputChannel(boundElement);
+		handler.setOutputChannel(bindingTarget);
 		handler.afterPropertiesSet();
 		((SubscribableChannel) streamListenerResult).subscribe(handler);
 	}

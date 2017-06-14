@@ -35,6 +35,7 @@ import org.springframework.cloud.stream.messaging.Sink;
 import org.springframework.cloud.stream.utils.MockBinderRegistryConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.PropertySource;
+import org.springframework.messaging.MessageChannel;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
 import static org.hamcrest.Matchers.equalTo;
@@ -62,7 +63,7 @@ public class PartitionedConsumerTest {
 	@Test
 	@SuppressWarnings("unchecked")
 	public void testBindingPartitionedConsumer() {
-		Binder binder = this.binderFactory.getBinder(null);
+		Binder binder = this.binderFactory.getBinder(null, MessageChannel.class);
 		ArgumentCaptor<ConsumerProperties> argumentCaptor = ArgumentCaptor.forClass(ConsumerProperties.class);
 		verify(binder).bindConsumer(eq("partIn"), anyString(), eq(this.testSink.input()),
 				argumentCaptor.capture());
@@ -73,7 +74,7 @@ public class PartitionedConsumerTest {
 
 	@EnableBinding(Sink.class)
 	@EnableAutoConfiguration
-	@Import({MockBinderRegistryConfiguration.class, BinderFactoryConfiguration.class})
+	@Import({ MockBinderRegistryConfiguration.class, BinderFactoryConfiguration.class })
 	@PropertySource("classpath:/org/springframework/cloud/stream/binder/partitioned-consumer-test.properties")
 	public static class TestSink {
 

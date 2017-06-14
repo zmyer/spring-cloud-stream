@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,18 +23,22 @@ import java.util.Map;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.springframework.cloud.stream.schema.SchemaNotFoundException;
 import org.springframework.cloud.stream.schema.SchemaReference;
 import org.springframework.cloud.stream.schema.SchemaRegistrationResponse;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.Assert;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 /**
  * @author Vinicius Carvalho
  * @author Marius Bogoevici
+ * @author Jon Archer
  */
 public class ConfluentSchemaRegistryClient implements SchemaRegistryClient {
 
@@ -56,45 +60,57 @@ public class ConfluentSchemaRegistryClient implements SchemaRegistryClient {
 	@Override
 	public SchemaRegistrationResponse register(String subject, String format, String schema) {
 		Assert.isTrue("avro".equals(format), "Only Avro is supported");
-		String path = String.format("/subjects/%s/versions", subject);
+		String path = String.format("/subjects/%s", subject);
 		HttpHeaders headers = new HttpHeaders();
 		headers.put("Accept",
 				Arrays.asList("application/vnd.schemaregistry.v1+json", "application/vnd.schemaregistry+json",
 						"application/json"));
 		headers.add("Content-Type", "application/json");
-		Integer id = null;
+		Integer version = null;
 		try {
 			String payload = this.mapper.writeValueAsString(Collections.singletonMap("schema", schema));
 			HttpEntity<String> request = new HttpEntity<>(payload, headers);
 			ResponseEntity<Map> response = this.template.exchange(this.endpoint + path, HttpMethod.POST, request,
 					Map.class);
-			id = (Integer) response.getBody().get("id");
+			version = (Integer) response.getBody().get("version");
 		}
 		catch (JsonProcessingException e) {
 			e.printStackTrace();
 		}
 		SchemaRegistrationResponse schemaRegistrationResponse = new SchemaRegistrationResponse();
-		schemaRegistrationResponse.setId(id);
-		schemaRegistrationResponse.setSchemaReference(new SchemaReference(subject, id, "avro"));
+		schemaRegistrationResponse.setId(version);
+		schemaRegistrationResponse.setSchemaReference(new SchemaReference(subject, version, "avro"));
 		return schemaRegistrationResponse;
 	}
 
 	@Override
 	public String fetch(SchemaReference schemaReference) {
-		String path = String.format("/schemas/ids/%d", schemaReference.getVersion());
+		String path = String.format("/subjects/%s/versions/%d",
+				schemaReference.getSubject(), schemaReference.getVersion());
 		HttpHeaders headers = new HttpHeaders();
 		headers.put("Accept",
 				Arrays.asList("application/vnd.schemaregistry.v1+json", "application/vnd.schemaregistry+json",
 						"application/json"));
 		headers.add("Content-Type", "application/vnd.schemaregistry.v1+json");
 		HttpEntity<String> request = new HttpEntity<>("", headers);
-		ResponseEntity<Map> response = this.template.exchange(this.endpoint + path, HttpMethod.GET, request, Map
-				.class);
-		return (String) response.getBody().get("schema");
+		try {
+			ResponseEntity<Map> response = this.template.exchange(this.endpoint + path, HttpMethod.GET, request,
+					Map.class);
+			return (String) response.getBody().get("schema");
+		}
+		catch (HttpClientErrorException e) {
+			if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+				throw new SchemaNotFoundException(
+						String.format("Could not find schema for reference: %s", schemaReference));
+			}
+			else {
+				throw e;
+			}
+		}
 	}
 
 	@Override
-	public String fetch(Integer id) {
+	public String fetch(int id) {
 		String path = String.format("/schemas/ids/%d", id);
 		HttpHeaders headers = new HttpHeaders();
 		headers.put("Accept",
@@ -102,8 +118,19 @@ public class ConfluentSchemaRegistryClient implements SchemaRegistryClient {
 						"application/json"));
 		headers.add("Content-Type", "application/vnd.schemaregistry.v1+json");
 		HttpEntity<String> request = new HttpEntity<>("", headers);
-		ResponseEntity<Map> response = this.template.exchange(this.endpoint + path, HttpMethod.GET, request, Map
-				.class);
-		return (String) response.getBody().get("schema");
+		try {
+			ResponseEntity<Map> response = this.template.exchange(this.endpoint + path, HttpMethod.GET, request,
+					Map.class);
+			return (String) response.getBody().get("schema");
+		}
+		catch (HttpClientErrorException e) {
+			if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+				throw new SchemaNotFoundException(
+						String.format("Could not find schema with id: %s", id));
+			}
+			else {
+				throw e;
+			}
+		}
 	}
 }

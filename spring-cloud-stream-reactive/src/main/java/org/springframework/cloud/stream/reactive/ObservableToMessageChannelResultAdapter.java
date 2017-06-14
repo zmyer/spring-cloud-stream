@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,19 @@
 
 package org.springframework.cloud.stream.reactive;
 
-import reactor.adapter.RxJava1Adapter;
+import org.reactivestreams.Publisher;
+import reactor.core.publisher.Flux;
 import rx.Observable;
+import rx.RxReactiveStreams;
 
 import org.springframework.cloud.stream.binding.StreamListenerResultAdapter;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.util.Assert;
 
 /**
- * A {@link StreamListenerResultAdapter} from an {@link Observable}
- * return type to a bound {@link MessageChannel}.
+ * A {@link StreamListenerResultAdapter} from an {@link Observable} return type to a bound
+ * {@link MessageChannel}.
+ *
  * @author Marius Bogoevici
  */
 public class ObservableToMessageChannelResultAdapter
@@ -40,13 +43,13 @@ public class ObservableToMessageChannelResultAdapter
 	}
 
 	@Override
-	public boolean supports(Class<?> resultType, Class<?> boundType) {
+	public boolean supports(Class<?> resultType, Class<?> bindingTarget) {
 		return Observable.class.isAssignableFrom(resultType)
-				&& MessageChannel.class.isAssignableFrom(boundType);
+				&& MessageChannel.class.isAssignableFrom(bindingTarget);
 	}
 
-	public void adapt(Observable<?> streamListenerResult, MessageChannel boundElement) {
-		this.fluxToMessageChannelResultAdapter.adapt(RxJava1Adapter.observableToFlux(streamListenerResult),
-				boundElement);
+	public void adapt(Observable<?> streamListenerResult, MessageChannel bindingTarget) {
+		Publisher<?> adaptedPublisher = RxReactiveStreams.toPublisher(streamListenerResult);
+		this.fluxToMessageChannelResultAdapter.adapt(Flux.from(adaptedPublisher), bindingTarget);
 	}
 }

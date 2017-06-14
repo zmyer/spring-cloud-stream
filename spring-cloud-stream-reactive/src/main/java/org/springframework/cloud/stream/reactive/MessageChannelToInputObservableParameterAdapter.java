@@ -16,10 +16,9 @@
 
 package org.springframework.cloud.stream.reactive;
 
-import reactor.adapter.RxJava1Adapter;
 import rx.Observable;
+import rx.RxReactiveStreams;
 
-import org.springframework.cloud.stream.annotation.Input;
 import org.springframework.cloud.stream.binding.StreamListenerParameterAdapter;
 import org.springframework.core.MethodParameter;
 import org.springframework.messaging.MessageChannel;
@@ -42,15 +41,14 @@ public class MessageChannelToInputObservableParameterAdapter
 		this.messageChannelToInputFluxArgumentAdapter = messageChannelToInputFluxArgumentAdapter;
 	}
 
-	public boolean supports(Class<?> boundElementType, MethodParameter methodParameter) {
-		return SubscribableChannel.class.isAssignableFrom(boundElementType)
-				&& methodParameter.getParameterAnnotation(Input.class) != null
+	public boolean supports(Class<?> bindingTargetType, MethodParameter methodParameter) {
+		return SubscribableChannel.class.isAssignableFrom(bindingTargetType)
 				&& Observable.class.isAssignableFrom(methodParameter.getParameterType());
 	}
 
 	@Override
-	public Observable<?> adapt(final SubscribableChannel boundElement, MethodParameter parameter) {
-		return RxJava1Adapter.publisherToObservable(
-				this.messageChannelToInputFluxArgumentAdapter.adapt(boundElement, parameter));
+	public Observable<?> adapt(final SubscribableChannel bindingTarget, MethodParameter parameter) {
+		return RxReactiveStreams.toObservable(
+				this.messageChannelToInputFluxArgumentAdapter.adapt(bindingTarget, parameter));
 	}
 }

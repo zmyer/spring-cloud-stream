@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,11 +20,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * @author Marius Bogoevici
+ * @author Vinicius Carvalho
  */
 @ConfigurationProperties(prefix = "spring.cloud.stream.schemaRegistryClient")
 public class SchemaRegistryClientProperties {
 
 	private String endpoint;
+
+	private boolean cached = false;
 
 	public String getEndpoint() {
 		return this.endpoint;
@@ -32,5 +35,13 @@ public class SchemaRegistryClientProperties {
 
 	public void setEndpoint(String endpoint) {
 		this.endpoint = endpoint;
+	}
+
+	public boolean isCached() {
+		return cached;
+	}
+
+	public void setCached(boolean cached) {
+		this.cached = cached;
 	}
 }

@@ -18,12 +18,37 @@ package org.springframework.cloud.stream.aggregate;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactoryUtils;
+import org.springframework.beans.factory.SmartInitializingSingleton;
+import org.springframework.boot.actuate.autoconfigure.EndpointAutoConfiguration;
+import org.springframework.boot.actuate.endpoint.MetricReaderPublicMetrics;
+import org.springframework.boot.actuate.endpoint.MetricsEndpoint;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.web.EmbeddedServletContainerAutoConfiguration;
+import org.springframework.boot.bind.PropertySourcesPropertyValues;
+import org.springframework.boot.bind.RelaxedDataBinder;
+import org.springframework.boot.bind.RelaxedNames;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.cloud.stream.annotation.EnableBinding;
+import org.springframework.cloud.stream.binding.BindableProxyFactory;
+import org.springframework.cloud.stream.config.ChannelBindingAutoConfiguration;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.PropertySources;
+import org.springframework.integration.monitor.IntegrationMBeanExporter;
+import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 /**
@@ -34,7 +59,11 @@ import org.springframework.util.StringUtils;
  * @author Marius Bogoevici
  * @author Venil Noronha
  */
-public class AggregateApplicationBuilder {
+@EnableBinding
+public class AggregateApplicationBuilder implements AggregateApplication, ApplicationContextAware,
+		SmartInitializingSingleton {
+
+	private static final String CHILD_CONTEXT_SUFFIX = ".spring.cloud.stream.context";
 
 	private SourceConfigurer sourceConfigurer;
 
@@ -50,12 +79,16 @@ public class AggregateApplicationBuilder {
 
 	private List<String> parentArgs = new ArrayList<>();
 
+	private boolean headless = true;
+
+	private boolean webEnvironment = true;
+
 	public AggregateApplicationBuilder(String... args) {
-		this(new Object[]{ParentConfiguration.class}, args);
+		this(new Object[] { ParentConfiguration.class }, args);
 	}
 
 	public AggregateApplicationBuilder(Object source, String... args) {
-		this(new Object[]{source}, args);
+		this(new Object[] { source }, args);
 	}
 
 	public AggregateApplicationBuilder(Object[] sources, String[] args) {
@@ -75,7 +108,7 @@ public class AggregateApplicationBuilder {
 	}
 
 	public AggregateApplicationBuilder parent(Object source, String... args) {
-		return parent(new Object[]{source}, args);
+		return parent(new Object[] { source }, args);
 	}
 
 	public AggregateApplicationBuilder parent(Object[] sources, String[] args) {
@@ -84,15 +117,65 @@ public class AggregateApplicationBuilder {
 		return this;
 	}
 
+	/**
+	 * Flag to explicitly request a web or non-web environment.
+	 *
+	 * @param webEnvironment true if the application has a web environment
+	 * @return the AggregateApplicationBuilder being constructed
+	 * @see SpringApplicationBuilder#web(boolean)
+	 */
+	public AggregateApplicationBuilder web(boolean webEnvironment) {
+		this.webEnvironment = webEnvironment;
+		return this;
+	}
+
+	/**
+	 * Configures the headless attribute of the build application.
+	 *
+	 * @param headless true if the application is headless
+	 * @return the AggregateApplicationBuilder being constructed
+	 * @see SpringApplicationBuilder#headless(boolean)
+	 */
+	public AggregateApplicationBuilder headless(boolean headless) {
+		this.headless = headless;
+		return this;
+	}
+
+	@Override
+	public void afterSingletonsInstantiated() {
+		this.run();
+	}
+
+	@Override
+	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+		this.parentContext = (ConfigurableApplicationContext) applicationContext;
+	}
+
+	@Override
+	public <T> T getBinding(Class<T> bindableType, String namespace) {
+		if (parentContext == null) {
+			throw new IllegalStateException("The aggregate application has not been started yet");
+		}
+		try {
+			ChildContextHolder contextHolder = parentContext.getBean(namespace + CHILD_CONTEXT_SUFFIX,
+					ChildContextHolder.class);
+			return contextHolder.getChildContext().getBean(bindableType);
+		}
+		catch (BeansException e) {
+			throw new IllegalStateException("Binding not found for '" + bindableType.getName() + "' into namespace " +
+					namespace);
+		}
+	}
+
 	public SourceConfigurer from(Class<?> app) {
 		SourceConfigurer sourceConfigurer = new SourceConfigurer(app);
 		this.sourceConfigurer = sourceConfigurer;
 		return sourceConfigurer;
 	}
 
-	public ConfigurableApplicationContext run(String[] parentArgsFromRun) {
-		this.parentArgs.addAll(Arrays.asList(parentArgsFromRun));
-		List<AppConfigurer<?>> apps = new ArrayList<AppConfigurer<?>>();
+	public ConfigurableApplicationContext run(String... parentArgs) {
+		this.parentArgs.addAll(Arrays.asList(parentArgs));
+		List<AppConfigurer<?>> apps = new ArrayList<>();
 		if (this.sourceConfigurer != null) {
 			apps.add(sourceConfigurer);
 		}
@@ -105,36 +188,141 @@ public class AggregateApplicationBuilder {
 			apps.add(sinkConfigurer);
 		}
 		LinkedHashMap<Class<?>, String> appsToEmbed = new LinkedHashMap<>();
+		LinkedHashMap<AppConfigurer, String> appConfigurers = new LinkedHashMap<>();
 		for (int i = 0; i < apps.size(); i++) {
 			AppConfigurer<?> appConfigurer = apps.get(i);
 			Class<?> appToEmbed = appConfigurer.getApp();
 			// Always update namespace before preparing SharedChannelRegistry
 			if (appConfigurer.namespace == null) {
-				appConfigurer.namespace = AggregateApplication.getNamespace(appConfigurer.getApp().getName(), i);
+				appConfigurer.namespace = AggregateApplicationUtils
+						.getDefaultNamespace(appConfigurer.getApp().getName(), i);
 			}
 			appsToEmbed.put(appToEmbed, appConfigurer.namespace);
+			appConfigurers.put(appConfigurer, appConfigurer.namespace);
 		}
-		this.parentContext = AggregateApplication.createParentContext(this.parentSources.toArray(new Object[0]),
-					this.parentArgs.toArray(new String[0]), areAppsSelfContained());
-		SharedChannelRegistry sharedChannelRegistry = this.parentContext.getBean(SharedChannelRegistry.class);
-		AggregateApplication.prepareSharedChannelRegistry(sharedChannelRegistry, appsToEmbed);
+		if (this.parentContext == null) {
+			if (Boolean.TRUE.equals(this.webEnvironment)) {
+				this.addParentSources(new Object[] { EmbeddedServletContainerAutoConfiguration.class });
+			}
+			this.parentContext = AggregateApplicationUtils.createParentContext(
+					this.parentSources.toArray(new Object[0]),
+					this.parentArgs.toArray(new String[0]), selfContained(), this.webEnvironment, this.headless);
+		}
+		else {
+			if (BeanFactoryUtils.beansOfTypeIncludingAncestors(this.parentContext, SharedBindingTargetRegistry.class)
+					.size() == 0) {
+				SharedBindingTargetRegistry sharedBindingTargetRegistry = new SharedBindingTargetRegistry();
+				this.parentContext.getBeanFactory().registerSingleton("sharedBindingTargetRegistry",
+						sharedBindingTargetRegistry);
+				this.parentContext.getBeanFactory().registerSingleton("sharedChannelRegistry",
+						new SharedChannelRegistry(sharedBindingTargetRegistry));
+			}
+		}
+		SharedBindingTargetRegistry sharedBindingTargetRegistry = this.parentContext
+				.getBean(SharedBindingTargetRegistry.class);
+		AggregateApplicationUtils.prepareSharedBindingTargetRegistry(sharedBindingTargetRegistry, appsToEmbed);
+		PropertySources propertySources = this.parentContext.getEnvironment()
+				.getPropertySources();
+		for (Map.Entry<AppConfigurer, String> appConfigurerEntry : appConfigurers.entrySet()) {
+
+			AppConfigurer appConfigurer = appConfigurerEntry.getKey();
+			String namespace = appConfigurerEntry.getValue().toLowerCase();
+			Set<String> argsToUpdate = new LinkedHashSet<>();
+			Set<String> argKeys = new LinkedHashSet<>();
+			final HashMap<String, String> target = new HashMap<>();
+			RelaxedDataBinder relaxedDataBinder = new RelaxedDataBinder(target, namespace);
+			relaxedDataBinder.bind(new PropertySourcesPropertyValues(propertySources));
+			if (!target.isEmpty()) {
+				for (Map.Entry<String, String> entry : target.entrySet()) {
+					// only update the values with the highest precedence level.
+					if (!relaxedNameKeyExists(entry.getKey(), argKeys)) {
+						String key = entry.getKey();
+						// in case of environment variables pass the lower-case property
+						// key
+						// as we pass the properties as command line properties
+						if (key.contains("_")) {
+							key = key.replace("_", "-").toLowerCase();
+						}
+						argKeys.add(key);
+						argsToUpdate.add("--" + key + "=" + entry.getValue());
+					}
+				}
+			}
+			// Add the args that are set at the application level if they weren't
+			// overridden above from other property sources.
+			if (appConfigurer.getArgs() != null) {
+				for (String arg : appConfigurer.getArgs()) {
+					// use the key part left to the assignment and trimming the prefix
+					// `--`
+					String key = arg.substring(0, arg.indexOf("=")).substring(2);
+					if (!relaxedNameKeyExists(key, argKeys)) {
+						argsToUpdate.add(arg);
+					}
+				}
+			}
+			if (!argsToUpdate.isEmpty()) {
+				appConfigurer.args(argsToUpdate.toArray(new String[0]));
+			}
+		}
 		for (int i = apps.size() - 1; i >= 0; i--) {
 			AppConfigurer<?> appConfigurer = apps.get(i);
 			appConfigurer.embed();
 		}
+		if (BeanFactoryUtils.beansOfTypeIncludingAncestors(this.parentContext, AggregateApplication.class)
+				.size() == 0) {
+			this.parentContext.getBeanFactory().registerSingleton("aggregateApplicationAccessor", this);
+		}
 		return this.parentContext;
 	}
 
-	private boolean areAppsSelfContained() {
+	private boolean selfContained() {
 		return (this.sourceConfigurer != null) && (this.sinkConfigurer != null);
 	}
 
-	private ChildContextBuilder childContext(Class<?> app,
-			ConfigurableApplicationContext parentContext, String namespace) {
-		return new ChildContextBuilder(
-				AggregateApplication.embedApp(parentContext, namespace, app));
+	private boolean relaxedNameKeyExists(String key, Collection<String> collection) {
+		RelaxedNames relaxedNames = new RelaxedNames(key);
+		for (String name : relaxedNames) {
+			if (collection.contains(name)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
+	private ChildContextBuilder childContext(Class<?> app, ConfigurableApplicationContext parentContext,
+			String namespace) {
+		return new ChildContextBuilder(AggregateApplicationUtils.embedApp(parentContext, namespace, app));
+	}
+
+	private static class ChildContextHolder {
+
+		private final ConfigurableApplicationContext childContext;
+
+		ChildContextHolder(ConfigurableApplicationContext childContext) {
+			Assert.notNull(childContext, "cannot be null");
+			this.childContext = childContext;
+		}
+
+		public ConfigurableApplicationContext getChildContext() {
+			return childContext;
+		}
+	}
+
+	@ImportAutoConfiguration({ ChannelBindingAutoConfiguration.class, EndpointAutoConfiguration.class })
+	@EnableBinding
+	public static class ParentConfiguration {
+		@Bean
+		@ConditionalOnMissingBean(SharedBindingTargetRegistry.class)
+		public SharedBindingTargetRegistry sharedBindingTargetRegistry() {
+			return new SharedBindingTargetRegistry();
+		}
+
+		@Bean
+		@ConditionalOnMissingBean(SharedChannelRegistry.class)
+		public SharedChannelRegistry sharedChannelRegistry(SharedBindingTargetRegistry sharedBindingTargetRegistry) {
+			return new SharedChannelRegistry(sharedBindingTargetRegistry);
+		}
+	}
 
 	public class SourceConfigurer extends AppConfigurer<SourceConfigurer> {
 
@@ -225,9 +413,46 @@ public class AggregateApplicationBuilder {
 		}
 
 		void embed() {
-			childContext(this.app, AggregateApplicationBuilder.this.parentContext,
-					this.namespace).args(this.args).config(this.names)
-					.profiles(this.profiles).run();
+			final ConfigurableApplicationContext childContext = childContext(this.app,
+					AggregateApplicationBuilder.this.parentContext, this.namespace).args(this.args).config(this.names)
+							.profiles(this.profiles).run();
+			// Register bindable proxies as beans so they can be queried for later
+			Map<String, BindableProxyFactory> bindableProxies = BeanFactoryUtils
+					.beansOfTypeIncludingAncestors(childContext.getBeanFactory(), BindableProxyFactory.class);
+			for (String bindableProxyName : bindableProxies.keySet()) {
+				try {
+					AggregateApplicationBuilder.this.parentContext.getBeanFactory().registerSingleton(
+							this.getNamespace() + CHILD_CONTEXT_SUFFIX, new ChildContextHolder(childContext));
+				}
+				catch (Exception e) {
+					throw new IllegalStateException(
+							"Error while trying to register the aggregate bound interface '"
+									+ bindableProxyName + "' into namespace '" + this.getNamespace() + "'",
+							e);
+				}
+			}
+			// Register metrics if JMX enabled and exporter avalable
+			if (BeanFactoryUtils.beansOfTypeIncludingAncestors(AggregateApplicationBuilder.this.parentContext,
+					IntegrationMBeanExporter.class).size() > 0) {
+				BeanFactoryUtils
+						.beanOfTypeIncludingAncestors(AggregateApplicationBuilder.this.parentContext,
+								MetricsEndpoint.class)
+						.registerPublicMetrics(
+								new MetricReaderPublicMetrics(new NamespaceAwareSpringIntegrationMetricReader(
+										this.namespace, childContext.getBean(IntegrationMBeanExporter.class))));
+			}
+		}
+
+		public AggregateApplication build() {
+			return applicationBuilder;
+		}
+
+		public String[] getArgs() {
+			return this.args;
+		}
+
+		public String getNamespace() {
+			return this.namespace;
 		}
 	}
 
@@ -262,7 +487,7 @@ public class AggregateApplicationBuilder {
 			return this;
 		}
 
-		public void run() {
+		public ConfigurableApplicationContext run() {
 			List<String> args = new ArrayList<String>();
 			if (this.args != null) {
 				args.addAll(Arrays.asList(this.args));
@@ -270,13 +495,9 @@ public class AggregateApplicationBuilder {
 			if (this.configName != null) {
 				args.add("--spring.config.name=" + this.configName);
 			}
-			this.builder.run(args.toArray(new String[0]));
+			return this.builder.run(args.toArray(new String[0]));
 		}
 
-	}
-
-	@EnableAutoConfiguration
-	public static class ParentConfiguration {
 	}
 
 }

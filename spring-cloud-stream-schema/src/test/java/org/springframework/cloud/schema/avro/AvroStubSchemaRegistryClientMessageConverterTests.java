@@ -49,6 +49,7 @@ public class AvroStubSchemaRegistryClientMessageConverterTests {
 	public void testSendMessage() throws Exception {
 		ConfigurableApplicationContext sourceContext = SpringApplication.run(AvroSourceApplication.class,
 				"--server.port=0",
+				"--debug",
 				"--spring.jmx.enabled=false",
 				"--spring.cloud.stream.bindings.output.contentType=application/*+avro",
 				"--spring.cloud.stream.schema.avro.dynamicSchemaGenerationEnabled=true");
@@ -60,7 +61,6 @@ public class AvroStubSchemaRegistryClientMessageConverterTests {
 		MessageCollector sourceMessageCollector = sourceContext.getBean(MessageCollector.class);
 		Message<?> outboundMessage = sourceMessageCollector.forChannel(source.output()).poll(1000,
 				TimeUnit.MILLISECONDS);
-
 
 		ConfigurableApplicationContext barSourceContext = SpringApplication.run(AvroSourceApplication.class,
 				"--server.port=0",
@@ -78,14 +78,12 @@ public class AvroStubSchemaRegistryClientMessageConverterTests {
 
 		assertThat(barOutboundMessage).isNotNull();
 
-
 		User2 secondBarOutboundPojo = new User2();
 		secondBarOutboundPojo.setFavoriteColor("foo" + UUID.randomUUID().toString());
 		secondBarOutboundPojo.setName("foo" + UUID.randomUUID().toString());
 		source.output().send(MessageBuilder.withPayload(secondBarOutboundPojo).build());
 		Message<?> secondBarOutboundMessage = sourceMessageCollector.forChannel(source.output()).poll(1000,
 				TimeUnit.MILLISECONDS);
-
 
 		ConfigurableApplicationContext sinkContext = SpringApplication.run(AvroSinkApplication.class,
 				"--server.port=0", "--spring.jmx.enabled=false");
@@ -103,8 +101,7 @@ public class AvroStubSchemaRegistryClientMessageConverterTests {
 		assertThat(receivedPojos.get(1)).isNotSameAs(firstOutboundUser2);
 		assertThat(receivedPojos.get(1).getFavoriteColor()).isEqualTo(firstOutboundUser2.getFavoriteColor());
 		assertThat(receivedPojos.get(1).getName()).isEqualTo(firstOutboundUser2.getName());
-		assertThat(receivedPojos.get(1).getFavoritePlace()).isEqualTo("NYC");
-
+		assertThat(receivedPojos.get(1).getFavoritePlace()).isEqualTo("Boston");
 
 		assertThat(receivedPojos.get(2)).isNotSameAs(secondBarOutboundPojo);
 		assertThat(receivedPojos.get(2).getFavoriteColor()).isEqualTo(secondBarOutboundPojo.getFavoriteColor());

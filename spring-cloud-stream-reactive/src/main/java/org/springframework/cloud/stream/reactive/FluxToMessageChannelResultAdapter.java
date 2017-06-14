@@ -26,8 +26,8 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 
 /**
- * A {@link org.springframework.cloud.stream.binding.StreamListenerResultAdapter} from a {@link Flux}
- * return type to a bound {@link MessageChannel}.
+ * A {@link org.springframework.cloud.stream.binding.StreamListenerResultAdapter} from a
+ * {@link Flux} return type to a bound {@link MessageChannel}.
  * @author Marius Bogoevici
  */
 public class FluxToMessageChannelResultAdapter
@@ -36,16 +36,16 @@ public class FluxToMessageChannelResultAdapter
 	private Log log = LogFactory.getLog(FluxToMessageChannelResultAdapter.class);
 
 	@Override
-	public boolean supports(Class<?> resultType, Class<?> boundType) {
-		return Flux.class.isAssignableFrom(resultType) && MessageChannel.class.isAssignableFrom(boundType);
+	public boolean supports(Class<?> resultType, Class<?> bindingTarget) {
+		return Flux.class.isAssignableFrom(resultType) && MessageChannel.class.isAssignableFrom(bindingTarget);
 	}
 
-	public void adapt(Flux<?> streamListenerResult, MessageChannel boundElement) {
+	public void adapt(Flux<?> streamListenerResult, MessageChannel bindingTarget) {
 		streamListenerResult
 				.doOnError(e -> this.log.error("Error while processing result", e))
 				.retry()
 				.subscribe(
-						result -> boundElement.send(result instanceof Message<?> ? (Message<?>) result
+						result -> bindingTarget.send(result instanceof Message<?> ? (Message<?>) result
 								: MessageBuilder.withPayload(result).build()));
 	}
 }

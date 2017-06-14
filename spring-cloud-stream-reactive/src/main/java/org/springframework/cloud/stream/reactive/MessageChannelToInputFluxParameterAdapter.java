@@ -18,7 +18,6 @@ package org.springframework.cloud.stream.reactive;
 
 import reactor.core.publisher.Flux;
 
-import org.springframework.cloud.stream.annotation.Input;
 import org.springframework.cloud.stream.binding.StreamListenerParameterAdapter;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.ResolvableType;
@@ -33,6 +32,7 @@ import org.springframework.util.Assert;
  * Adapts an {@link org.springframework.cloud.stream.annotation.Input} annotated
  * {@link MessageChannel} to a {@link Flux}.
  * @author Marius Bogoevici
+ * @author Ilayaperumal Gopinathan
  */
 public class MessageChannelToInputFluxParameterAdapter
 		implements StreamListenerParameterAdapter<Flux<?>, SubscribableChannel> {
@@ -45,16 +45,16 @@ public class MessageChannelToInputFluxParameterAdapter
 	}
 
 	@Override
-	public boolean supports(Class<?> boundElementType, MethodParameter methodParameter) {
-		return SubscribableChannel.class.isAssignableFrom(boundElementType)
-				&& methodParameter.getParameterAnnotation(Input.class) != null
+	public boolean supports(Class<?> bindingTargetType, MethodParameter methodParameter) {
+		return SubscribableChannel.class.isAssignableFrom(bindingTargetType)
 				&& Flux.class.isAssignableFrom(methodParameter.getParameterType());
 	}
 
 	@Override
-	public Flux<?> adapt(final SubscribableChannel boundElement, MethodParameter parameter) {
+	public Flux<?> adapt(final SubscribableChannel bindingTarget, MethodParameter parameter) {
 		ResolvableType resolvableType = ResolvableType.forMethodParameter(parameter);
-		Class<?> argumentClass = resolvableType.getGeneric(0).getRawClass();
+		final Class<?> argumentClass = (resolvableType.getGeneric(0).getRawClass() != null) ? (resolvableType
+				.getGeneric(0).getRawClass()) : Object.class;
 		final Object monitor = new Object();
 		if (Message.class.isAssignableFrom(argumentClass)) {
 			return Flux.create(emitter -> {
@@ -63,15 +63,16 @@ public class MessageChannelToInputFluxParameterAdapter
 						emitter.next(message);
 					}
 				};
-				boundElement.subscribe(messageHandler);
-				emitter.setCancellation(() -> boundElement.unsubscribe(messageHandler));
+				bindingTarget.subscribe(messageHandler);
+				emitter.setCancellation(() -> bindingTarget.unsubscribe(messageHandler));
 			}).publish().autoConnect();
 		}
 		else {
 			return Flux.create(emitter -> {
 				MessageHandler messageHandler = message -> {
 					synchronized (monitor) {
-						if (argumentClass.isAssignableFrom(message.getPayload().getClass())) {
+						if (argumentClass.isAssignableFrom(message
+								.getPayload().getClass())) {
 							emitter.next(message.getPayload());
 						}
 						else {
@@ -79,8 +80,8 @@ public class MessageChannelToInputFluxParameterAdapter
 						}
 					}
 				};
-				boundElement.subscribe(messageHandler);
-				emitter.setCancellation(() -> boundElement.unsubscribe(messageHandler));
+				bindingTarget.subscribe(messageHandler);
+				emitter.setCancellation(() -> bindingTarget.unsubscribe(messageHandler));
 			}).publish().autoConnect();
 		}
 	}

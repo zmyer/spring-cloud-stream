@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-
 package org.springframework.cloud.stream.schema.server.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * @author Vinicius Carvalho
+ * @author Ilayaperumal Gopinathan
  */
 @ConfigurationProperties("spring.cloud.stream.schema.server")
 public class SchemaServerProperties {
@@ -32,11 +32,24 @@ public class SchemaServerProperties {
 	 */
 	private String path;
 
+	/**
+	 * Boolean flag to enable/disable schema deletion.
+	 */
+	private boolean allowSchemaDeletion;
+
 	public String getPath() {
 		return this.path;
 	}
 
 	public void setPath(String path) {
 		this.path = path;
+	}
+
+	public boolean isAllowSchemaDeletion() {
+		return allowSchemaDeletion;
+	}
+
+	public void setAllowSchemaDeletion(boolean allowSchemaDeletion) {
+		this.allowSchemaDeletion = allowSchemaDeletion;
 	}
 }

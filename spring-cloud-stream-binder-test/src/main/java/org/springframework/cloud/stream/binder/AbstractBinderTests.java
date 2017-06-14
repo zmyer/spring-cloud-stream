@@ -18,12 +18,14 @@ package org.springframework.cloud.stream.binder;
 
 import java.util.UUID;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.junit.After;
 import org.junit.Test;
 
 import org.springframework.cloud.stream.binding.MessageConverterConfigurer;
 import org.springframework.cloud.stream.config.BindingProperties;
-import org.springframework.cloud.stream.config.ChannelBindingServiceProperties;
+import org.springframework.cloud.stream.config.BindingServiceProperties;
 import org.springframework.cloud.stream.converter.CompositeMessageConverterFactory;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.Lifecycle;
@@ -50,31 +52,37 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SuppressWarnings("unchecked")
 public abstract class AbstractBinderTests<B extends AbstractTestBinder<? extends AbstractBinder<MessageChannel, CP, PP>, CP, PP>, CP extends ConsumerProperties, PP extends ProducerProperties> {
 
+	protected final Log logger = LogFactory.getLog(this.getClass());
+
 	protected B testBinder;
 
 	/**
-	 * Subclasses may override this default value to have tests wait longer for a message receive, for example if
-	 * running
-	 * in an environment that is known to be slow (e.g. travis).
+	 * Subclasses may override this default value to have tests wait longer for a message
+	 * receive, for example if running in an environment that is known to be slow (e.g.
+	 * travis).
 	 */
 	protected double timeoutMultiplier = 1.0D;
 
 	/**
-	 * Attempt to receive a message on the given channel,
-	 * waiting up to 1s (times the {@link #timeoutMultiplier}).
+	 * Attempt to receive a message on the given channel, waiting up to 1s (times the
+	 * {@link #timeoutMultiplier}).
 	 */
 	protected Message<?> receive(PollableChannel channel) {
 		return receive(channel, 1);
 	}
 
 	/**
-	 * Attempt to receive a message on the given channel,
-	 * waiting up to 1s * additionalMultiplier * {@link #timeoutMultiplier}).
+	 * Attempt to receive a message on the given channel, waiting up to 1s *
+	 * additionalMultiplier * {@link #timeoutMultiplier}).
 	 *
 	 * Allows accomodating tests which are slower than normal (e.g. retry).
 	 */
 	protected Message<?> receive(PollableChannel channel, int additionalMultiplier) {
-		return channel.receive((int) (1000 * timeoutMultiplier * additionalMultiplier));
+		long startTime = System.currentTimeMillis();
+		Message<?> receive = channel.receive((int) (1000 * timeoutMultiplier * additionalMultiplier));
+		long elapsed = System.currentTimeMillis() - startTime;
+		logger.debug("receive() took " + elapsed / 1000 + " seconds");
+		return receive;
 	}
 
 	@Test
@@ -82,28 +90,28 @@ public abstract class AbstractBinderTests<B extends AbstractTestBinder<? extends
 		Binder binder = getBinder();
 		Binding<MessageChannel> foo0ProducerBinding = binder.bindProducer("foo.0", new DirectChannel(),
 				createProducerProperties());
-		Binding<MessageChannel> foo0ConsumerBinding = binder.bindConsumer("foo.0", "test", new DirectChannel(),
+		Binding<MessageChannel> foo0ConsumerBinding = binder.bindConsumer("foo.0", "testClean", new DirectChannel(),
 				createConsumerProperties());
 		Binding<MessageChannel> foo1ProducerBinding = binder.bindProducer("foo.1", new DirectChannel(),
 				createProducerProperties());
-		Binding<MessageChannel> foo1ConsumerBinding = binder.bindConsumer("foo.1", "test", new DirectChannel(),
+		Binding<MessageChannel> foo1ConsumerBinding = binder.bindConsumer("foo.1", "testClean", new DirectChannel(),
 				createConsumerProperties());
 		Binding<MessageChannel> foo2ProducerBinding = binder.bindProducer("foo.2", new DirectChannel(),
 				createProducerProperties());
 		foo0ProducerBinding.unbind();
-		assertThat(TestUtils.getPropertyValue(foo0ProducerBinding, "endpoint", Lifecycle.class).isRunning())
+		assertThat(TestUtils.getPropertyValue(foo0ProducerBinding, "lifecycle", Lifecycle.class).isRunning())
 				.isFalse();
 		foo0ConsumerBinding.unbind();
 		foo1ProducerBinding.unbind();
-		assertThat(TestUtils.getPropertyValue(foo0ConsumerBinding, "endpoint", Lifecycle.class).isRunning())
+		assertThat(TestUtils.getPropertyValue(foo0ConsumerBinding, "lifecycle", Lifecycle.class).isRunning())
 				.isFalse();
-		assertThat(TestUtils.getPropertyValue(foo1ProducerBinding, "endpoint", Lifecycle.class).isRunning())
+		assertThat(TestUtils.getPropertyValue(foo1ProducerBinding, "lifecycle", Lifecycle.class).isRunning())
 				.isFalse();
 		foo1ConsumerBinding.unbind();
 		foo2ProducerBinding.unbind();
-		assertThat(TestUtils.getPropertyValue(foo1ConsumerBinding, "endpoint", Lifecycle.class).isRunning())
+		assertThat(TestUtils.getPropertyValue(foo1ConsumerBinding, "lifecycle", Lifecycle.class).isRunning())
 				.isFalse();
-		assertThat(TestUtils.getPropertyValue(foo2ProducerBinding, "endpoint", Lifecycle.class).isRunning())
+		assertThat(TestUtils.getPropertyValue(foo2ProducerBinding, "lifecycle", Lifecycle.class).isRunning())
 				.isFalse();
 	}
 
@@ -115,7 +123,7 @@ public abstract class AbstractBinderTests<B extends AbstractTestBinder<? extends
 		QueueChannel moduleInputChannel = new QueueChannel();
 		Binding<MessageChannel> producerBinding = binder.bindProducer("foo.0", moduleOutputChannel,
 				outputBindingProperties.getProducer());
-		Binding<MessageChannel> consumerBinding = binder.bindConsumer("foo.0", "test", moduleInputChannel,
+		Binding<MessageChannel> consumerBinding = binder.bindConsumer("foo.0", "testSendAndReceive", moduleInputChannel,
 				createConsumerProperties());
 		Message<?> message = MessageBuilder.withPayload("foo").setHeader(MessageHeaders.CONTENT_TYPE, "foo/bar")
 				.build();
@@ -147,9 +155,9 @@ public abstract class AbstractBinderTests<B extends AbstractTestBinder<? extends
 		Binding<MessageChannel> producerBinding2 = binder.bindProducer("foo.y", moduleOutputChannel2,
 				createProducerProperties());
 
-		Binding<MessageChannel> consumerBinding1 = binder.bindConsumer("foo.x", "test", moduleInputChannel,
+		Binding<MessageChannel> consumerBinding1 = binder.bindConsumer("foo.x", "testSendAndReceiveMultipleTopics", moduleInputChannel,
 				createConsumerProperties());
-		Binding<MessageChannel> consumerBinding2 = binder.bindConsumer("foo.y", "test", moduleInputChannel,
+		Binding<MessageChannel> consumerBinding2 = binder.bindConsumer("foo.y", "testSendAndReceiveMultipleTopics", moduleInputChannel,
 				createConsumerProperties());
 
 		String testPayload1 = "foo" + UUID.randomUUID().toString();
@@ -161,7 +169,6 @@ public abstract class AbstractBinderTests<B extends AbstractTestBinder<? extends
 		binderBindUnbindLatency();
 		moduleOutputChannel1.send(message1);
 		moduleOutputChannel2.send(message2);
-
 
 		Message<?>[] messages = new Message[2];
 		messages[0] = receive(moduleInputChannel);
@@ -188,7 +195,7 @@ public abstract class AbstractBinderTests<B extends AbstractTestBinder<? extends
 		QueueChannel moduleInputChannel = new QueueChannel();
 		Binding<MessageChannel> producerBinding = binder.bindProducer("bar.0", moduleOutputChannel,
 				producerBindingProperties.getProducer());
-		Binding<MessageChannel> consumerBinding = binder.bindConsumer("bar.0", "test", moduleInputChannel,
+		Binding<MessageChannel> consumerBinding = binder.bindConsumer("bar.0", "testSendAndReceiveNoOriginalContentType", moduleInputChannel,
 				createConsumerProperties());
 		binderBindUnbindLatency();
 
@@ -203,7 +210,6 @@ public abstract class AbstractBinderTests<B extends AbstractTestBinder<? extends
 		consumerBinding.unbind();
 	}
 
-
 	protected abstract B getBinder() throws Exception;
 
 	protected abstract CP createConsumerProperties();
@@ -216,26 +222,25 @@ public abstract class AbstractBinderTests<B extends AbstractTestBinder<? extends
 		return bindingProperties;
 	}
 
-
 	protected BindingProperties createProducerBindingProperties(PP producerProperties) {
 		BindingProperties bindingProperties = new BindingProperties();
 		bindingProperties.setProducer(producerProperties);
 		return bindingProperties;
 	}
 
-	protected DirectChannel createBindableChannel(String channelName, BindingProperties bindingProperties) throws
-			Exception {
-		ChannelBindingServiceProperties channelBindingServiceProperties = new ChannelBindingServiceProperties();
-		channelBindingServiceProperties.getBindings().put(channelName, bindingProperties);
+	protected DirectChannel createBindableChannel(String channelName, BindingProperties bindingProperties)
+			throws Exception {
+		BindingServiceProperties bindingServiceProperties = new BindingServiceProperties();
+		bindingServiceProperties.getBindings().put(channelName, bindingProperties);
 		ConfigurableApplicationContext applicationContext = new GenericApplicationContext();
 		applicationContext.refresh();
-		channelBindingServiceProperties.setApplicationContext(applicationContext);
-		channelBindingServiceProperties.setConversionService(new DefaultConversionService());
-		channelBindingServiceProperties.afterPropertiesSet();
+		bindingServiceProperties.setApplicationContext(applicationContext);
+		bindingServiceProperties.setConversionService(new DefaultConversionService());
+		bindingServiceProperties.afterPropertiesSet();
 		DirectChannel channel = new DirectChannel();
 		channel.setBeanName(channelName);
 		MessageConverterConfigurer messageConverterConfigurer = new MessageConverterConfigurer(
-				channelBindingServiceProperties,
+				bindingServiceProperties,
 				new CompositeMessageConverterFactory(null, null));
 		messageConverterConfigurer.setBeanFactory(applicationContext.getBeanFactory());
 		messageConverterConfigurer.afterPropertiesSet();
@@ -251,7 +256,8 @@ public abstract class AbstractBinderTests<B extends AbstractTestBinder<? extends
 	}
 
 	/**
-	 * If appropriate, let the binder middleware settle down a bit while binding/unbinding actually happens.
+	 * If appropriate, let the binder middleware settle down a bit while binding/unbinding
+	 * actually happens.
 	 */
 	protected void binderBindUnbindLatency() throws InterruptedException {
 		// default none

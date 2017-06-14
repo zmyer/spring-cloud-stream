@@ -30,6 +30,7 @@ import org.springframework.cloud.stream.test.binder.TestSupportBinder;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.integration.support.MessageBuilder;
 import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessageHeaders;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
@@ -39,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Ilayaperumal Gopinathan
  */
 @RunWith(SpringJUnit4ClassRunner.class)
-@SpringBootTest(classes = {ContentTypeOutboundSourceTests.TestSource.class})
+@SpringBootTest(classes = { ContentTypeOutboundSourceTests.TestSource.class })
 public class ContentTypeOutboundSourceTests {
 
 	@Autowired
@@ -53,8 +54,9 @@ public class ContentTypeOutboundSourceTests {
 	@SuppressWarnings("unchecked")
 	public void testMessageHeaderWhenNoExplicitContentTypeOnMessage() throws Exception {
 		testSource.output().send(MessageBuilder.withPayload("{\"message\":\"Hi\"}").build());
-		Message<String> received = (Message<String>) ((TestSupportBinder) binderFactory.getBinder(null))
-				.messageCollector().forChannel(testSource.output()).poll();
+		Message<String> received = (Message<String>) ((TestSupportBinder) binderFactory.getBinder(null,
+				MessageChannel.class))
+						.messageCollector().forChannel(testSource.output()).poll();
 		assertThat(received.getHeaders().get(MessageHeaders.CONTENT_TYPE).toString()).isEqualTo("application/json");
 		assertThat(received).hasFieldOrPropertyWithValue("payload", "{\"message\":\"Hi\"}");
 	}
@@ -66,4 +68,3 @@ public class ContentTypeOutboundSourceTests {
 
 	}
 }
-
