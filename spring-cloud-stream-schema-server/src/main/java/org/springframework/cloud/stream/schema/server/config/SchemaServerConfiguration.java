@@ -33,14 +33,17 @@ import org.springframework.cloud.stream.schema.server.support.AvroSchemaValidato
 import org.springframework.cloud.stream.schema.server.support.SchemaValidator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 /**
  * @author Vinicius Carvalho
+ * @author Soby Chacko
  */
 @Configuration
 @EnableJpaRepositories(basePackageClasses = SchemaRepository.class)
 @EnableConfigurationProperties(SchemaServerProperties.class)
+@Import(ServerController.class)
 public class SchemaServerConfiguration {
 
 	@Bean
@@ -55,12 +58,6 @@ public class SchemaServerConfiguration {
 				}
 			}
 		};
-	}
-
-	@Bean
-	public ServerController serverController(SchemaRepository repository,
-			SchemaServerProperties schemeServerProperties) {
-		return new ServerController(repository, schemaValidators(), schemeServerProperties);
 	}
 
 	@Bean

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.springframework.util.Assert;
 
 /**
  * @author Vinicius Carvalho
+ * @author Sercan Karaoglu
  */
 @ConfigurationProperties(prefix = "spring.cloud.stream.schema.avro")
 public class AvroMessageConverterProperties {
@@ -30,9 +31,25 @@ public class AvroMessageConverterProperties {
 
 	private Resource readerSchema;
 
+	/**
+	 * The source directory of Apache Avro schema. This schema is used by this
+	 * converter. If this schema depends on other schemas consider defining those
+	 * those dependent ones in the {@link #schemaImports}
+	 * @parameter
+	 */
 	private Resource[] schemaLocations;
 
+	/**
+	 * A list of files or directories that should be loaded first thus making
+	 * them importable by subsequent schemas. Note that imported files
+	 * should not reference each other.
+	 * @parameter
+	 */
+	private Resource[] schemaImports;
+
 	private String prefix = "vnd";
+
+	private Class<? extends SubjectNamingStrategy> subjectNamingStrategy = DefaultSubjectNamingStrategy.class;
 
 	public Resource getReaderSchema() {
 		return this.readerSchema;
@@ -67,4 +84,22 @@ public class AvroMessageConverterProperties {
 	public void setPrefix(String prefix) {
 		this.prefix = prefix;
 	}
+
+	public Class<?> getSubjectNamingStrategy() {
+		return subjectNamingStrategy;
+	}
+
+	public void setSubjectNamingStrategy(Class<? extends SubjectNamingStrategy>  subjectNamingStrategy) {
+		Assert.notNull(subjectNamingStrategy, "cannot be null");
+		this.subjectNamingStrategy = subjectNamingStrategy;
+	}
+
+	public Resource[] getSchemaImports() {
+		return schemaImports;
+	}
+
+	public void setSchemaImports(Resource[] schemaImports) {
+		this.schemaImports = schemaImports;
+	}
+
 }

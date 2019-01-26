@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 the original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.springframework.cloud.stream.config;
 
 import java.util.concurrent.TimeUnit;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -33,6 +34,7 @@ import org.springframework.integration.support.MessageBuilder;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessageHeaders;
+import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
@@ -40,10 +42,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * @author Marius Bogoevici
+ * @author Vinicius Carvalho
+ * @author Oleg Zhurakousky
  * @since 1.2
  */
 @RunWith(SpringJUnit4ClassRunner.class)
-@SpringBootTest(classes = TextPlainToJsonConversionTest.FooProcessor.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@SpringBootTest(classes = TextPlainToJsonConversionTest.FooProcessor.class,
+		webEnvironment = SpringBootTest.WebEnvironment.NONE
+)
 public class TextPlainToJsonConversionTest {
 
 	@Autowired
@@ -52,25 +58,27 @@ public class TextPlainToJsonConversionTest {
 	@Autowired
 	private BinderFactory binderFactory;
 
+	private ObjectMapper mapper = new ObjectMapper();
+
+	@SuppressWarnings("unchecked")
 	@Test
 	public void testNoContentTypeToJsonConversionOnInput() throws Exception {
 		testProcessor.input().send(MessageBuilder.withPayload("{\"name\":\"Bar\"}").build());
-		@SuppressWarnings("unchecked")
-		Message<?> received = ((TestSupportBinder) binderFactory.getBinder(null, MessageChannel.class))
+		Message<String> received = (Message<String>) ((TestSupportBinder) binderFactory.getBinder(null, MessageChannel.class))
 				.messageCollector().forChannel(testProcessor.output()).poll(1, TimeUnit.SECONDS);
 		assertThat(received).isNotNull();
-		assertThat(((Foo) received.getPayload()).getName()).isEqualTo("transformed-Bar");
+		Foo foo = mapper.readValue(received.getPayload(),Foo.class);
+		assertThat(foo.getName()).isEqualTo("transformed-Bar");
 	}
 
-	@Test
+	/**
+	 * @since 2.0: Conversion from text/plain -> json is no longer supported. Strict contentType only.
+	 * @throws Exception
+	 */
+	@Test(expected = MessagingException.class)
 	public void testTextPlainToJsonConversionOnInput() throws Exception {
 		testProcessor.input().send(MessageBuilder.withPayload("{\"name\":\"Bar\"}")
 				.setHeader(MessageHeaders.CONTENT_TYPE, "text/plain").build());
-		@SuppressWarnings("unchecked")
-		Message<?> received = ((TestSupportBinder) binderFactory.getBinder(null, MessageChannel.class))
-				.messageCollector().forChannel(testProcessor.output()).poll(1, TimeUnit.SECONDS);
-		assertThat(received).isNotNull();
-		assertThat(((Foo) received.getPayload()).getName()).isEqualTo("transformed-Bar");
 	}
 
 	@EnableBinding(Processor.class)
@@ -80,7 +88,9 @@ public class TextPlainToJsonConversionTest {
 		@StreamListener("input")
 		@SendTo("output")
 		public Foo consume(Foo foo) {
-			return new Foo("transformed-" + foo.getName());
+			Foo returnFoo = new Foo();
+			returnFoo.setName("transformed-" + foo.getName());
+			return returnFoo;
 		}
 
 	}
@@ -90,10 +100,6 @@ public class TextPlainToJsonConversionTest {
 		private String name;
 
 		public Foo() {
-		}
-
-		public Foo(String name) {
-			this.name = name;
 		}
 
 		public String getName() {

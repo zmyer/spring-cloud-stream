@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 the original author or authors.
+ * Copyright 2017-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,32 +20,31 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.Assert;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.cloud.stream.aggregate.AggregateApplicationBuilder;
 import org.springframework.cloud.stream.binder.BinderFactory;
 import org.springframework.cloud.stream.config.aggregate.processor.TestProcessor;
 import org.springframework.cloud.stream.config.aggregate.source.TestSource;
 import org.springframework.cloud.stream.test.binder.TestSupportBinder;
-import org.springframework.cloud.stream.test.binder.TestSupportBinderAutoConfiguration;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
 import static org.hamcrest.Matchers.notNullValue;
 
 /**
  * @author Ilayaperumal Gopinathan
+ * @author Oleg Zhurakousky
  */
-@RunWith(SpringJUnit4ClassRunner.class)
 public class AggregateApplicationTests {
 
 	@Test
 	@SuppressWarnings("unchecked")
 	public void testAggregateApplication() throws Exception {
 		ConfigurableApplicationContext context = new AggregateApplicationBuilder(
-				TestSupportBinderAutoConfiguration.class).from(TestSource.class).to(TestProcessor.class).run();
+				AggregateApplicationTestConfig.class).web(false).from(TestSource.class).to(TestProcessor.class).run();
 		TestSupportBinder testSupportBinder = (TestSupportBinder) context.getBean(BinderFactory.class).getBinder(null,
 				MessageChannel.class);
 		MessageChannel processorOutput = testSupportBinder.getChannelForName("output");
@@ -53,5 +52,13 @@ public class AggregateApplicationTests {
 				.poll(5, TimeUnit.SECONDS));
 		Assert.assertThat(received, notNullValue());
 		Assert.assertTrue(received.getPayload().endsWith("processed"));
+
+		context.close();
+	}
+
+	@Configuration
+	@EnableAutoConfiguration
+	static class AggregateApplicationTestConfig {
+
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 the original author or authors.
+ * Copyright 2015-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,48 +24,46 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.stream.annotation.EnableBinding;
-import org.springframework.cloud.stream.utils.MockBinderRegistryConfiguration;
-import org.springframework.context.annotation.Import;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 /**
  * @author Marius Bogoevici
+ * @author Janne Valkealahti
  */
 @RunWith(SpringJUnit4ClassRunner.class)
-@SpringBootTest(classes = ArbitraryInterfaceWithDefaultsTests.TestFooChannels.class)
+@SpringBootTest(classes = ArbitraryInterfaceWithDefaultsTests.TestFooChannels.class,
+				properties = "spring.cloud.stream.default-binder=mock")
 public class ArbitraryInterfaceWithDefaultsTests {
 
 	@Autowired
 	public FooChannels fooChannels;
 
-	@SuppressWarnings("rawtypes")
 	@Autowired
 	private BinderFactory binderFactory;
 
-	@SuppressWarnings("unchecked")
+	@SuppressWarnings({"rawtypes", "unchecked"})
 	@Test
 	public void testArbitraryInterfaceChannelsBound() {
 		final Binder binder = this.binderFactory.getBinder(null, MessageChannel.class);
-		verify(binder).bindConsumer(eq("foo"), anyString(), eq(this.fooChannels.foo()),
-				Mockito.<ConsumerProperties>any());
-		verify(binder).bindConsumer(eq("bar"), anyString(), eq(this.fooChannels.bar()),
-				Mockito.<ConsumerProperties>any());
+		verify(binder).bindConsumer(eq("foo"), isNull(), eq(this.fooChannels.foo()),
+				Mockito.any());
+		verify(binder).bindConsumer(eq("bar"), isNull(), eq(this.fooChannels.bar()),
+				Mockito.any());
 		verify(binder).bindProducer(eq("baz"), eq(this.fooChannels.baz()),
-				Mockito.<ProducerProperties>any());
+				Mockito.any());
 		verify(binder).bindProducer(eq("qux"), eq(this.fooChannels.qux()),
-				Mockito.<ProducerProperties>any());
+				Mockito.any());
 		verifyNoMoreInteractions(binder);
 	}
 
 	@EnableBinding(FooChannels.class)
 	@EnableAutoConfiguration
-	@Import(MockBinderRegistryConfiguration.class)
 	public static class TestFooChannels {
 
 	}

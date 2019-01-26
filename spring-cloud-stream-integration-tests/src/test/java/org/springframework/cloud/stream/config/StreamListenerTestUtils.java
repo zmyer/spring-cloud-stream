@@ -16,10 +16,14 @@
 
 package org.springframework.cloud.stream.config;
 
+import javax.validation.constraints.NotBlank;
+
 import org.springframework.cloud.stream.annotation.Input;
 import org.springframework.cloud.stream.annotation.Output;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.SubscribableChannel;
+
+
 
 /**
  * @author Ilayaperumal Gopinathan
@@ -55,6 +59,14 @@ public class StreamListenerTestUtils {
 		public void setFoo(String foo) {
 			this.foo = foo;
 		}
+
+		@Override
+		public String toString() {
+			final StringBuffer sb = new StringBuffer("FooPojo{");
+			sb.append("foo='").append(foo).append('\'');
+			sb.append('}');
+			return sb.toString();
+		}
 	}
 
 	public static class BarPojo {
@@ -68,5 +80,25 @@ public class StreamListenerTestUtils {
 		public void setBar(String bar) {
 			this.bar = bar;
 		}
+
+		@Override
+		public String toString() {
+			final StringBuffer sb = new StringBuffer("BarPojo{");
+			sb.append("bar='").append(bar).append('\'');
+			sb.append('}');
+			return sb.toString();
+		}
 	}
+
+	public static class PojoWithValidation {
+
+		@NotBlank
+		private String foo;
+
+		public String getFoo() { return this.foo; }
+
+		public void setFoo(String foo) { this.foo = foo; }
+
+	}
+
 }

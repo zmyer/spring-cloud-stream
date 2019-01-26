@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 the original author or authors.
+ * Copyright 2015-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,12 @@
 
 package org.springframework.cloud.stream.binding;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Map;
 
-import org.springframework.beans.BeansException;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.SmartLifecycle;
+import org.springframework.cloud.stream.binder.Binding;
+import org.springframework.util.CollectionUtils;
 
 /**
  * Coordinates binding/unbinding of output binding targets in accordance to the lifecycle
@@ -30,79 +29,16 @@ import org.springframework.context.SmartLifecycle;
  *
  * @author Marius Bogoevici
  * @author Ilayaperumal Gopinathan
+ * @author Oleg Zhurakousky
  */
-public class OutputBindingLifecycle implements SmartLifecycle, ApplicationContextAware {
+public class OutputBindingLifecycle extends AbstractBindingLifecycle {
 
-	private volatile boolean running;
+	@SuppressWarnings("unused")
+	//It is actually used reflectively since at the moment we do not want to expose it via public method
+	private Collection<Binding<Object>> outputBindings = new ArrayList<Binding<Object>>();
 
-	private ConfigurableApplicationContext applicationContext;
-
-	@Override
-	public void setApplicationContext(ApplicationContext applicationContext)
-			throws BeansException {
-		this.applicationContext = (ConfigurableApplicationContext) applicationContext;
-	}
-
-	@Override
-	public void start() {
-		if (!running) {
-
-			// retrieve the BindingService lazily, avoiding early initialization
-			try {
-				BindingService bindingService = this.applicationContext
-						.getBean(BindingService.class);
-				Map<String, Bindable> bindables = this.applicationContext
-						.getBeansOfType(Bindable.class);
-				for (Bindable bindable : bindables.values()) {
-					bindable.bindOutputs(bindingService);
-				}
-			}
-			catch (BeansException e) {
-				throw new IllegalStateException(
-						"Cannot perform binding, no proper implementation found", e);
-			}
-			this.running = true;
-		}
-	}
-
-	@Override
-	public void stop() {
-		if (running) {
-			try {
-				// retrieve the BindingService lazily, avoiding early
-				// initialization
-				BindingService bindingService = this.applicationContext
-						.getBean(BindingService.class);
-				Map<String, Bindable> bindables = this.applicationContext
-						.getBeansOfType(Bindable.class);
-				for (Bindable bindable : bindables.values()) {
-					bindable.unbindOutputs(bindingService);
-				}
-			}
-			catch (BeansException e) {
-				throw new IllegalStateException(
-						"Cannot perform unbinding, no proper implementation found", e);
-			}
-			this.running = false;
-		}
-	}
-
-	@Override
-	public boolean isRunning() {
-		return running;
-	}
-
-	@Override
-	public boolean isAutoStartup() {
-		return true;
-	}
-
-	@Override
-	public void stop(Runnable callback) {
-		stop();
-		if (callback != null) {
-			callback.run();
-		}
+	public OutputBindingLifecycle(BindingService bindingService, Map<String, Bindable> bindables) {
+		super(bindingService, bindables);
 	}
 
 	/**
@@ -112,5 +48,18 @@ public class OutputBindingLifecycle implements SmartLifecycle, ApplicationContex
 	@Override
 	public int getPhase() {
 		return Integer.MIN_VALUE + 1000;
+	}
+
+	@Override
+	void doStartWithBindable(Bindable bindable) {
+		Collection<Binding<Object>> bindableBindings = bindable.createAndBindOutputs(bindingService);
+		if (!CollectionUtils.isEmpty(bindableBindings)) {
+			this.outputBindings.addAll(bindableBindings);
+		}
+	}
+
+	@Override
+	void doStopWithBindable(Bindable bindable) {
+		bindable.unbindOutputs(bindingService);
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2016 the original author or authors.
+ * Copyright 2013-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,36 +16,26 @@
 
 package org.springframework.cloud.stream.binder;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.cloud.stream.annotation.StreamRetryTemplate;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.support.AbstractApplicationContext;
-import org.springframework.core.serializer.support.SerializationFailedException;
+import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.expression.EvaluationContext;
-import org.springframework.integration.codec.Codec;
 import org.springframework.integration.expression.ExpressionUtils;
 import org.springframework.messaging.Message;
-import org.springframework.messaging.MessageHeaders;
 import org.springframework.retry.backoff.ExponentialBackOffPolicy;
 import org.springframework.retry.policy.SimpleRetryPolicy;
 import org.springframework.retry.support.RetryTemplate;
 import org.springframework.util.Assert;
-import org.springframework.util.ClassUtils;
-import org.springframework.util.MimeType;
-import org.springframework.util.MimeTypeUtils;
-import org.springframework.util.ObjectUtils;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 /**
@@ -56,9 +46,12 @@ import org.springframework.util.StringUtils;
  * @author Ilayaperumal Gopinathan
  * @author Mark Fisher
  * @author Marius Bogoevici
+ * @author Soby Chacko
+ * @author Vinicius Carvalho
+ * @author Oleg Zhurakousky
  */
 public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends ProducerProperties>
-		implements ApplicationContextAware, InitializingBean, Binder<T, C, P> {
+	implements ApplicationContextAware, InitializingBean, Binder<T, C, P> {
 
 	/**
 	 * The delimiter between a group and index when constructing a binder
@@ -68,21 +61,19 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 
 	protected final Log logger = LogFactory.getLog(getClass());
 
-	private final StringConvertingContentTypeResolver contentTypeResolver = new StringConvertingContentTypeResolver();
-
-	private volatile AbstractApplicationContext applicationContext;
-
-	private volatile Codec codec;
+	private volatile GenericApplicationContext applicationContext;
 
 	private volatile EvaluationContext evaluationContext;
 
-	private volatile Map<String, Class<?>> payloadTypeCache = new ConcurrentHashMap<>();
+	@Autowired(required = false) // this would need to be refactored into constructor in the future
+	@StreamRetryTemplate
+	private RetryTemplate consumerBindingRetryTemplate;
 
 	/**
 	 * For binder implementations that support a prefix, apply the prefix to the name.
 	 *
 	 * @param prefix the prefix.
-	 * @param name the name.
+	 * @param name   the name.
 	 */
 	public static String applyPrefix(String prefix, String name) {
 		return prefix + name;
@@ -104,20 +95,16 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 
 	@Override
 	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
-		Assert.isInstanceOf(AbstractApplicationContext.class, applicationContext);
-		this.applicationContext = (AbstractApplicationContext) applicationContext;
+		Assert.isInstanceOf(GenericApplicationContext.class, applicationContext);
+		this.applicationContext = (GenericApplicationContext) applicationContext;
 	}
 
 	protected ConfigurableListableBeanFactory getBeanFactory() {
 		return this.applicationContext.getBeanFactory();
 	}
 
-	public void setCodec(Codec codec) {
-		this.codec = codec;
-	}
-
-	public void setIntegrationEvaluationContext(EvaluationContext evaluationContext) {
-		this.evaluationContext = evaluationContext;
+	protected EvaluationContext getEvaluationContext() {
+		return this.evaluationContext;
 	}
 
 	@Override
@@ -157,7 +144,7 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 	/**
 	 * Construct a name comprised of the name and group.
 	 *
-	 * @param name the name.
+	 * @param name  the name.
 	 * @param group the group.
 	 * @return the constructed name.
 	 */
@@ -165,187 +152,47 @@ public abstract class AbstractBinder<T, C extends ConsumerProperties, P extends 
 		return name + GROUP_INDEX_DELIMITER + (StringUtils.hasText(group) ? group : "default");
 	}
 
+	/**
+	 * Deprecated as of v2.0. Doesn't do anything other then returns an instance
+	 * of {@link MessageValues} built from {@link Message}. Remains primarily for
+	 * backward compatibility and will be removed in the next major release.
+	 */
+	@Deprecated
 	protected final MessageValues serializePayloadIfNecessary(Message<?> message) {
-		Object originalPayload = message.getPayload();
-		Object originalContentType = message.getHeaders().get(MessageHeaders.CONTENT_TYPE);
-
-		// Pass content type as String since some transport adapters will exclude
-		// CONTENT_TYPE Header otherwise
-		Object contentType = JavaClassMimeTypeConversion
-				.mimeTypeFromObject(originalPayload, ObjectUtils.nullSafeToString(originalContentType)).toString();
-		Object payload = serializePayloadIfNecessary(originalPayload);
-		MessageValues messageValues = new MessageValues(message);
-		messageValues.setPayload(payload);
-		messageValues.put(MessageHeaders.CONTENT_TYPE, contentType);
-		if (originalContentType != null && !originalContentType.toString().equals(contentType.toString())) {
-			messageValues.put(BinderHeaders.BINDER_ORIGINAL_CONTENT_TYPE, originalContentType.toString());
-		}
-		return messageValues;
+		return new MessageValues(message);
 	}
 
-	protected final byte[] serializePayloadIfNecessary(Object originalPayload) {
-		if (originalPayload instanceof byte[]) {
-			return (byte[]) originalPayload;
-		}
-		else {
-			ByteArrayOutputStream bos = new ByteArrayOutputStream();
-			try {
-				if (originalPayload instanceof String) {
-					return ((String) originalPayload).getBytes("UTF-8");
-				}
-				this.codec.encode(originalPayload, bos);
-				return bos.toByteArray();
-			}
-			catch (IOException e) {
-				throw new SerializationFailedException(
-						"unable to serialize payload [" + originalPayload.getClass().getName() + "]", e);
-			}
-		}
-	}
-
-	protected final MessageValues deserializePayloadIfNecessary(Message<?> message) {
-		return deserializePayloadIfNecessary(new MessageValues(message));
-	}
-
-	protected final MessageValues deserializePayloadIfNecessary(MessageValues messageValues) {
-		Object originalPayload = messageValues.getPayload();
-		MimeType contentType = this.contentTypeResolver.resolve(messageValues);
-		Object payload = deserializePayload(originalPayload, contentType);
-		if (payload != null) {
-			messageValues.setPayload(payload);
-			Object originalContentType = messageValues.get(BinderHeaders.BINDER_ORIGINAL_CONTENT_TYPE);
-			// Reset content-type only if the original content type is not null (when
-			// receiving messages from
-			// non-SCSt applications).
-			if (originalContentType != null) {
-				messageValues.put(MessageHeaders.CONTENT_TYPE, originalContentType);
-				messageValues.remove(BinderHeaders.BINDER_ORIGINAL_CONTENT_TYPE);
-			}
-		}
-		return messageValues;
-	}
-
-	private Object deserializePayload(Object payload, MimeType contentType) {
-		if (payload instanceof byte[]) {
-			if (contentType == null || MimeTypeUtils.APPLICATION_OCTET_STREAM.equals(contentType)) {
-				return payload;
-			}
-			else {
-				return deserializePayload((byte[]) payload, contentType);
-			}
-		}
-		return payload;
-	}
-
-	private Object deserializePayload(byte[] bytes, MimeType contentType) {
-		if ("text".equalsIgnoreCase(contentType.getType()) || MimeTypeUtils.APPLICATION_JSON.equals(contentType)) {
-			try {
-				return new String(bytes, "UTF-8");
-			}
-			catch (UnsupportedEncodingException e) {
-				String errorMessage = "unable to deserialize [java.lang.String]. Encoding not supported. "
-						+ e.getMessage();
-				logger.error(errorMessage);
-				throw new SerializationFailedException(errorMessage, e);
-			}
-		}
-		else {
-			String className = JavaClassMimeTypeConversion.classNameFromMimeType(contentType);
-			try {
-				// Cache types to avoid unnecessary ClassUtils.forName calls.
-				Class<?> targetType = this.payloadTypeCache.get(className);
-				if (targetType == null) {
-					targetType = ClassUtils.forName(className, null);
-					this.payloadTypeCache.put(className, targetType);
-				}
-				return this.codec.decode(bytes, targetType);
-			} // catch all exceptions that could occur during de-serialization
-			catch (Exception e) {
-				String errorMessage = "Unable to deserialize [" + className + "] using the contentType [" + contentType
-						+ "] " + e.getMessage();
-				logger.error(errorMessage);
-				throw new SerializationFailedException(errorMessage, e);
-			}
-		}
-	}
-
+	/**
+	 * Deprecated as of v2.0. Remains primarily for
+	 * backward compatibility and will be removed in the next major release.
+	 */
+	@Deprecated
 	protected String buildPartitionRoutingExpression(String expressionRoot) {
 		return "'" + expressionRoot + "-' + headers['" + BinderHeaders.PARTITION_HEADER + "']";
 	}
 
 	/**
-	 * Create and configure a retry template.
+	 * Create and configure a default retry template unless one
+	 * has already been provided via @Bean by an application.
 	 *
 	 * @param properties The properties.
 	 * @return The retry template
 	 */
-	public RetryTemplate buildRetryTemplate(ConsumerProperties properties) {
-		RetryTemplate template = new RetryTemplate();
-		SimpleRetryPolicy retryPolicy = new SimpleRetryPolicy();
-		retryPolicy.setMaxAttempts(properties.getMaxAttempts());
-		ExponentialBackOffPolicy backOffPolicy = new ExponentialBackOffPolicy();
-		backOffPolicy.setInitialInterval(properties.getBackOffInitialInterval());
-		backOffPolicy.setMultiplier(properties.getBackOffMultiplier());
-		backOffPolicy.setMaxInterval(properties.getBackOffMaxInterval());
-		template.setRetryPolicy(retryPolicy);
-		template.setBackOffPolicy(backOffPolicy);
-		return template;
-	}
+	protected RetryTemplate buildRetryTemplate(ConsumerProperties properties) {
+		RetryTemplate rt = this.consumerBindingRetryTemplate;
+		if (rt == null) {
+			rt = new RetryTemplate();
+			SimpleRetryPolicy retryPolicy = CollectionUtils.isEmpty(properties.getRetryableExceptions())
+					? new SimpleRetryPolicy(properties.getMaxAttempts())
+							: new SimpleRetryPolicy(properties.getMaxAttempts(), properties.getRetryableExceptions(), true, properties.isDefaultRetryable());
 
-	/**
-	 * Handles representing any java class as a {@link MimeType}.
-	 *
-	 * @author David Turanski
-	 * @author Ilayaperumal Gopinathan
-	 */
-	public abstract static class JavaClassMimeTypeConversion {
-
-		private static ConcurrentMap<String, MimeType> mimeTypesCache = new ConcurrentHashMap<>();
-
-		static MimeType mimeTypeFromObject(Object payload, String originalContentType) {
-			Assert.notNull(payload, "payload object cannot be null.");
-			if (payload instanceof byte[]) {
-				return MimeTypeUtils.APPLICATION_OCTET_STREAM;
-			}
-			if (payload instanceof String) {
-				return MimeTypeUtils.APPLICATION_JSON_VALUE.equals(originalContentType) ? MimeTypeUtils.APPLICATION_JSON
-						: MimeTypeUtils.TEXT_PLAIN;
-			}
-			String className = payload.getClass().getName();
-			MimeType mimeType = mimeTypesCache.get(className);
-			if (mimeType == null) {
-				String modifiedClassName = className;
-				if (payload.getClass().isArray()) {
-					// Need to remove trailing ';' for an object array, e.g.
-					// "[Ljava.lang.String;" or multi-dimensional
-					// "[[[Ljava.lang.String;"
-					if (modifiedClassName.endsWith(";")) {
-						modifiedClassName = modifiedClassName.substring(0, modifiedClassName.length() - 1);
-					}
-					// Wrap in quotes to handle the illegal '[' character
-					modifiedClassName = "\"" + modifiedClassName + "\"";
-				}
-				mimeType = MimeType.valueOf("application/x-java-object;type=" + modifiedClassName);
-				mimeTypesCache.put(className, mimeType);
-			}
-			return mimeType;
+			ExponentialBackOffPolicy backOffPolicy = new ExponentialBackOffPolicy();
+			backOffPolicy.setInitialInterval(properties.getBackOffInitialInterval());
+			backOffPolicy.setMultiplier(properties.getBackOffMultiplier());
+			backOffPolicy.setMaxInterval(properties.getBackOffMaxInterval());
+			rt.setRetryPolicy(retryPolicy);
+			rt.setBackOffPolicy(backOffPolicy);
 		}
-
-		static String classNameFromMimeType(MimeType mimeType) {
-			Assert.notNull(mimeType, "mimeType cannot be null.");
-			String className = mimeType.getParameter("type");
-			if (className == null) {
-				return null;
-			}
-			// unwrap quotes if any
-			className = className.replace("\"", "");
-
-			// restore trailing ';'
-			if (className.contains("[L")) {
-				className += ";";
-			}
-			return className;
-		}
-
+		return rt;
 	}
 }

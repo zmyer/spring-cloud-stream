@@ -22,7 +22,6 @@ import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.cloud.stream.annotation.Bindings;
 import org.springframework.cloud.stream.annotation.EnableBinding;
 import org.springframework.cloud.stream.binder.BinderFactory;
 import org.springframework.cloud.stream.messaging.Source;
@@ -38,13 +37,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * @author Ilayaperumal Gopinathan
+ * @author Vinicius Carvalho
+ * @author Oleg Zhurakousky
  */
 @RunWith(SpringJUnit4ClassRunner.class)
 @SpringBootTest(classes = { ContentTypeOutboundSourceTests.TestSource.class })
 public class ContentTypeOutboundSourceTests {
 
 	@Autowired
-	@Bindings(TestSource.class)
 	private Source testSource;
 
 	@Autowired
@@ -53,12 +53,12 @@ public class ContentTypeOutboundSourceTests {
 	@Test
 	@SuppressWarnings("unchecked")
 	public void testMessageHeaderWhenNoExplicitContentTypeOnMessage() throws Exception {
-		testSource.output().send(MessageBuilder.withPayload("{\"message\":\"Hi\"}").build());
+		testSource.output().send(MessageBuilder.withPayload("{\"message\":\"Hi\"}").setHeader(MessageHeaders.CONTENT_TYPE,"text/plain").build());
 		Message<String> received = (Message<String>) ((TestSupportBinder) binderFactory.getBinder(null,
 				MessageChannel.class))
 						.messageCollector().forChannel(testSource.output()).poll();
-		assertThat(received.getHeaders().get(MessageHeaders.CONTENT_TYPE).toString()).isEqualTo("application/json");
-		assertThat(received).hasFieldOrPropertyWithValue("payload", "{\"message\":\"Hi\"}");
+		assertThat(received.getHeaders().get(MessageHeaders.CONTENT_TYPE).toString()).contains("text/plain");
+		assertThat("{\"message\":\"Hi\"}").isEqualTo(received.getPayload());
 	}
 
 	@EnableBinding(Source.class)

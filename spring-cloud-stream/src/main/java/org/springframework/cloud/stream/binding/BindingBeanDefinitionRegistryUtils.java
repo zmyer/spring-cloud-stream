@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 the original author or authors.
+ * Copyright 2015-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.Map;
 
+import org.springframework.beans.factory.BeanDefinitionStoreException;
 import org.springframework.beans.factory.support.AutowireCandidateQualifier;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.RootBeanDefinition;
@@ -28,7 +29,6 @@ import org.springframework.cloud.stream.annotation.Input;
 import org.springframework.cloud.stream.annotation.Output;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.util.ReflectionUtils;
-import org.springframework.util.ReflectionUtils.MethodCallback;
 import org.springframework.util.StringUtils;
 
 /**
@@ -36,7 +36,9 @@ import org.springframework.util.StringUtils;
  *
  * @author Marius Bogoevici
  * @author Dave Syer
+ * @author Artem Bilan
  */
+@SuppressWarnings("deprecation")
 public abstract class BindingBeanDefinitionRegistryUtils {
 
 	public static void registerInputBindingTargetBeanDefinition(String qualifierValue, String name,
@@ -57,6 +59,11 @@ public abstract class BindingBeanDefinitionRegistryUtils {
 			String qualifierValue, String name, String bindingTargetInterfaceBeanName,
 			String bindingTargetInterfaceMethodName, BeanDefinitionRegistry registry) {
 
+		if (registry.containsBeanDefinition(name)) {
+			throw new BeanDefinitionStoreException(bindingTargetInterfaceBeanName, name,
+					"bean definition with this name already exists - " + registry.getBeanDefinition(name));
+		}
+
 		RootBeanDefinition rootBeanDefinition = new RootBeanDefinition();
 		rootBeanDefinition.setFactoryBeanName(bindingTargetInterfaceBeanName);
 		rootBeanDefinition.setUniqueFactoryMethodName(bindingTargetInterfaceMethodName);
@@ -66,23 +73,19 @@ public abstract class BindingBeanDefinitionRegistryUtils {
 
 	public static void registerBindingTargetBeanDefinitions(Class<?> type, final String bindingTargetInterfaceBeanName,
 			final BeanDefinitionRegistry registry) {
-		ReflectionUtils.doWithMethods(type, new MethodCallback() {
-			@Override
-			public void doWith(Method method) throws IllegalArgumentException, IllegalAccessException {
-				Input input = AnnotationUtils.findAnnotation(method, Input.class);
-				if (input != null) {
-					String name = getBindingTargetName(input, method);
-					registerInputBindingTargetBeanDefinition(input.value(), name, bindingTargetInterfaceBeanName,
-							method.getName(), registry);
-				}
-				Output output = AnnotationUtils.findAnnotation(method, Output.class);
-				if (output != null) {
-					String name = getBindingTargetName(output, method);
-					registerOutputBindingTargetBeanDefinition(output.value(), name, bindingTargetInterfaceBeanName,
-							method.getName(), registry);
-				}
+		ReflectionUtils.doWithMethods(type, method -> {
+			Input input = AnnotationUtils.findAnnotation(method, Input.class);
+			if (input != null) {
+				String name = getBindingTargetName(input, method);
+				registerInputBindingTargetBeanDefinition(input.value(), name, bindingTargetInterfaceBeanName,
+						method.getName(), registry);
 			}
-
+			Output output = AnnotationUtils.findAnnotation(method, Output.class);
+			if (output != null) {
+				String name = getBindingTargetName(output, method);
+				registerOutputBindingTargetBeanDefinition(output.value(), name, bindingTargetInterfaceBeanName,
+						method.getName(), registry);
+			}
 		});
 	}
 

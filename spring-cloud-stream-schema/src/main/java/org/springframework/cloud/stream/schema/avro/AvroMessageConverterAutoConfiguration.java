@@ -16,6 +16,8 @@
 
 package org.springframework.cloud.stream.schema.avro;
 
+import java.lang.reflect.Constructor;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -24,15 +26,17 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
-import org.springframework.cloud.stream.binder.StringConvertingContentTypeResolver;
+import org.springframework.cloud.stream.annotation.StreamMessageConverter;
 import org.springframework.cloud.stream.schema.client.SchemaRegistryClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.ObjectUtils;
+import org.springframework.util.ReflectionUtils;
 
 /**
  * @author Marius Bogoevici
  * @author Vinicius Carvalho
+ * @author Sercan Karaoglu
  */
 @Configuration
 @ConditionalOnClass(name = "org.apache.avro.Schema")
@@ -46,13 +50,13 @@ public class AvroMessageConverterAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean(AvroSchemaRegistryClientMessageConverter.class)
+	@StreamMessageConverter
 	public AvroSchemaRegistryClientMessageConverter avroSchemaMessageConverter(
 			SchemaRegistryClient schemaRegistryClient) {
 		AvroSchemaRegistryClientMessageConverter avroSchemaRegistryClientMessageConverter = new AvroSchemaRegistryClientMessageConverter(
-				schemaRegistryClient);
+				schemaRegistryClient, cacheManager());
 		avroSchemaRegistryClientMessageConverter.setDynamicSchemaGenerationEnabled(
 				this.avroMessageConverterProperties.isDynamicSchemaGenerationEnabled());
-		avroSchemaRegistryClientMessageConverter.setContentTypeResolver(new StringConvertingContentTypeResolver());
 		if (this.avroMessageConverterProperties.getReaderSchema() != null) {
 			avroSchemaRegistryClientMessageConverter.setReaderSchema(
 					this.avroMessageConverterProperties.getReaderSchema());
@@ -61,8 +65,26 @@ public class AvroMessageConverterAutoConfiguration {
 			avroSchemaRegistryClientMessageConverter.setSchemaLocations(
 					this.avroMessageConverterProperties.getSchemaLocations());
 		}
+		if (!ObjectUtils.isEmpty(this.avroMessageConverterProperties.getSchemaImports())) {
+			avroSchemaRegistryClientMessageConverter.setSchemaImports(
+					this.avroMessageConverterProperties.getSchemaImports());
+		}
 		avroSchemaRegistryClientMessageConverter.setPrefix(this.avroMessageConverterProperties.getPrefix());
-		avroSchemaRegistryClientMessageConverter.setCacheManager(cacheManager());
+
+		try {
+			Class<?> clazz = this.avroMessageConverterProperties.getSubjectNamingStrategy();
+			Constructor constructor = ReflectionUtils.accessibleConstructor(clazz);
+
+			avroSchemaRegistryClientMessageConverter.setSubjectNamingStrategy(
+					(SubjectNamingStrategy) constructor.newInstance()
+			);
+		} catch (Exception ex) {
+			throw new IllegalStateException("Unable to create SubjectNamingStrategy " +
+					this.avroMessageConverterProperties.getSubjectNamingStrategy().toString(),
+					ex
+			);
+		}
+
 		return avroSchemaRegistryClientMessageConverter;
 	}
 

@@ -25,12 +25,10 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.stream.annotation.EnableBinding;
 import org.springframework.cloud.stream.messaging.Source;
-import org.springframework.cloud.stream.utils.MockBinderRegistryConfiguration;
-import org.springframework.context.annotation.Import;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
@@ -38,27 +36,26 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
  * @author Marius Bogoevici
  */
 @RunWith(SpringJUnit4ClassRunner.class)
-@SpringBootTest(classes = SourceBindingWithDefaultsTests.TestSource.class)
+@SpringBootTest(classes = SourceBindingWithDefaultsTests.TestSource.class,
+		properties = "spring.cloud.stream.defaultBinder=mock")
 public class SourceBindingWithDefaultsTests {
 
-	@SuppressWarnings("rawtypes")
 	@Autowired
 	private BinderFactory binderFactory;
 
 	@Autowired
 	private Source testSource;
 
-	@SuppressWarnings("unchecked")
+	@SuppressWarnings({"rawtypes", "unchecked"})
 	@Test
 	public void testSourceOutputChannelBound() {
 		Binder binder = binderFactory.getBinder(null, MessageChannel.class);
-		verify(binder).bindProducer(eq("output"), eq(this.testSource.output()), Mockito.<ProducerProperties>any());
+		verify(binder).bindProducer(eq("output"), eq(this.testSource.output()), Mockito.any());
 		verifyNoMoreInteractions(binder);
 	}
 
 	@EnableBinding(Source.class)
 	@EnableAutoConfiguration
-	@Import(MockBinderRegistryConfiguration.class)
 	public static class TestSource {
 
 	}

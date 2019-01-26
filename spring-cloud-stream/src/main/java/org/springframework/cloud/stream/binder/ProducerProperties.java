@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,16 @@
 
 package org.springframework.cloud.stream.binder;
 
+import java.io.IOException;
+
 import javax.validation.constraints.AssertTrue;
 import javax.validation.constraints.Min;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 import org.springframework.expression.Expression;
@@ -30,16 +35,49 @@ import org.springframework.expression.Expression;
  *
  * @author Marius Bogoevici
  * @author Ilayaperumal Gopinathan
+ * @author Gary Russell
+ * @author Oleg Zhurakousky
  */
 @JsonInclude(Include.NON_DEFAULT)
 public class ProducerProperties {
 
+	/**
+	 * Signals if this producer needs to be started automatically
+	 *
+	 * Default: true
+	 */
+	private boolean autoStartup = true;
+
 	@JsonSerialize(using = ExpressionSerializer.class)
 	private Expression partitionKeyExpression;
 
+	/**
+	 * @deprecated in favor of 'partitionKeyExtractorName'
+	 */
+	@Deprecated
 	private Class<?> partitionKeyExtractorClass;
 
+	/**
+	 * The name of the bean that implements {@link PartitionKeyExtractorStrategy}\.
+	 * Used to extract a key used to compute the partition id (see 'partitionSelector*')
+	 * <br>
+	 * Mutually exclusive with 'partitionKeyExpression'.
+	 */
+	private String partitionKeyExtractorName;
+
+	/**
+	 * @deprecated in favor of 'partitionSelectorName'
+	 */
+	@Deprecated
 	private Class<?> partitionSelectorClass;
+
+	/**
+	 * The name of the bean that implements {@link PartitionSelectorStrategy}\.
+	 * Used to determine partition id based on partition key (see 'partitionKeyExtractor*').
+	 * <br>
+	 * Mutually exclusive with 'partitionSelectorExpression'.
+	 */
+	private String partitionSelectorName;
 
 	@JsonSerialize(using = ExpressionSerializer.class)
 	private Expression partitionSelectorExpression;
@@ -48,9 +86,11 @@ public class ProducerProperties {
 
 	private String[] requiredGroups = new String[] {};
 
-	private HeaderMode headerMode = HeaderMode.embeddedHeaders;
+	private HeaderMode headerMode;
 
 	private boolean useNativeEncoding = false;
+
+	private boolean errorChannelEnabled = false;
 
 	public Expression getPartitionKeyExpression() {
 		return partitionKeyExpression;
@@ -60,22 +100,27 @@ public class ProducerProperties {
 		this.partitionKeyExpression = partitionKeyExpression;
 	}
 
+	@Deprecated
 	public Class<?> getPartitionKeyExtractorClass() {
 		return partitionKeyExtractorClass;
 	}
 
+	@Deprecated
 	public void setPartitionKeyExtractorClass(Class<?> partitionKeyExtractorClass) {
 		this.partitionKeyExtractorClass = partitionKeyExtractorClass;
 	}
 
 	public boolean isPartitioned() {
-		return this.partitionKeyExpression != null || partitionKeyExtractorClass != null;
+		return this.partitionKeyExpression != null || this.partitionKeyExtractorName != null
+				|| this.partitionKeyExtractorClass != null;
 	}
 
+	@Deprecated
 	public Class<?> getPartitionSelectorClass() {
 		return partitionSelectorClass;
 	}
 
+	@Deprecated
 	public void setPartitionSelectorClass(Class<?> partitionSelectorClass) {
 		this.partitionSelectorClass = partitionSelectorClass;
 	}
@@ -131,4 +176,46 @@ public class ProducerProperties {
 		this.useNativeEncoding = useNativeEncoding;
 	}
 
+	public boolean isErrorChannelEnabled() {
+		return this.errorChannelEnabled;
+	}
+
+	public void setErrorChannelEnabled(boolean errorChannelEnabled) {
+		this.errorChannelEnabled = errorChannelEnabled;
+	}
+
+	public String getPartitionKeyExtractorName() {
+		return partitionKeyExtractorName;
+	}
+
+	public void setPartitionKeyExtractorName(String partitionKeyExtractorName) {
+		this.partitionKeyExtractorName = partitionKeyExtractorName;
+	}
+
+	public String getPartitionSelectorName() {
+		return partitionSelectorName;
+	}
+
+	public void setPartitionSelectorName(String partitionSelectorName) {
+		this.partitionSelectorName = partitionSelectorName;
+	}
+
+	public boolean isAutoStartup() {
+		return autoStartup;
+	}
+
+	public void setAutoStartup(boolean autoStartup) {
+		this.autoStartup = autoStartup;
+	}
+
+	static class ExpressionSerializer extends JsonSerializer<Expression> {
+
+		@Override
+		public void serialize(Expression expression, JsonGenerator jsonGenerator, SerializerProvider serializerProvider)
+				throws IOException {
+			if (expression != null) {
+				jsonGenerator.writeString(expression.getExpressionString());
+			}
+		}
+	}
 }

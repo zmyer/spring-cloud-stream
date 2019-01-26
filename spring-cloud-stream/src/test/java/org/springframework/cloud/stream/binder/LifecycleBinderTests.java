@@ -22,11 +22,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.cloud.stream.annotation.EnableBinding;
 import org.springframework.cloud.stream.messaging.Source;
-import org.springframework.cloud.stream.utils.MockBinderRegistryConfiguration;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.Lifecycle;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,7 +36,8 @@ public class LifecycleBinderTests {
 
 	@Test
 	public void testOnlySmartLifecyclesStarted() {
-		ConfigurableApplicationContext applicationContext = SpringApplication.run(TestSource.class, "--server.port=-1");
+		ConfigurableApplicationContext applicationContext = SpringApplication.run(TestSource.class,
+				"--server.port=-1", "--spring.cloud.stream.defaultBinder=mock", "--spring.jmx.enabled=false");
 		SimpleLifecycle simpleLifecycle = applicationContext.getBean(SimpleLifecycle.class);
 		assertThat(simpleLifecycle.isRunning()).isFalse();
 		applicationContext.close();
@@ -46,7 +45,6 @@ public class LifecycleBinderTests {
 
 	@EnableBinding(Source.class)
 	@EnableAutoConfiguration
-	@Import(MockBinderRegistryConfiguration.class)
 	public static class TestSource {
 
 		@Bean

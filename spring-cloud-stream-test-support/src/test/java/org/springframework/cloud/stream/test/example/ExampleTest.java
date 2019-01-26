@@ -22,9 +22,7 @@ import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.cloud.stream.annotation.Bindings;
 import org.springframework.cloud.stream.annotation.EnableBinding;
-import org.springframework.cloud.stream.binder.BinderFactory;
 import org.springframework.cloud.stream.messaging.Processor;
 import org.springframework.cloud.stream.test.binder.MessageCollector;
 import org.springframework.integration.annotation.Transformer;
@@ -41,18 +39,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * correctly.
  */
 @RunWith(SpringJUnit4ClassRunner.class)
-@SpringBootTest(classes = ExampleTest.MyProcessor.class, properties = { "server.port=-1" })
+@SpringBootTest(classes = ExampleTest.MyProcessor.class, webEnvironment = SpringBootTest.WebEnvironment.NONE,
+		properties = {
+		"--spring.cloud.stream.bindings.input.contentType=text/plain",
+		"--spring.cloud.stream.bindings.output.contentType=text/plain"})
 @DirtiesContext
 public class ExampleTest {
-
-	@Autowired
-	private BinderFactory binderFactory;
 
 	@Autowired
 	private MessageCollector messageCollector;
 
 	@Autowired
-	@Bindings(MyProcessor.class)
 	private Processor processor;
 
 	@Test

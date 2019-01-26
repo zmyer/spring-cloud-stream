@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 the original author or authors.
+ * Copyright 2015-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,43 +25,41 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.stream.annotation.EnableBinding;
 import org.springframework.cloud.stream.messaging.Processor;
-import org.springframework.cloud.stream.utils.MockBinderRegistryConfiguration;
-import org.springframework.context.annotation.Import;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 /**
  * @author Marius Bogoevici
+ * @author Janne Valkealahti
  */
 @RunWith(SpringJUnit4ClassRunner.class)
-@SpringBootTest(classes = ProcessorBindingsWithDefaultsTests.TestProcessor.class)
+@SpringBootTest(classes = ProcessorBindingsWithDefaultsTests.TestProcessor.class,
+properties = "spring.cloud.stream.defaultBinder=mock")
 public class ProcessorBindingsWithDefaultsTests {
 
-	@SuppressWarnings("rawtypes")
 	@Autowired
 	private BinderFactory binderFactory;
 
 	@Autowired
 	private Processor processor;
 
-	@SuppressWarnings("unchecked")
+	@SuppressWarnings({"rawtypes", "unchecked"})
 	@Test
 	public void testSourceOutputChannelBound() {
 		Binder binder = this.binderFactory.getBinder(null, MessageChannel.class);
-		Mockito.verify(binder).bindConsumer(eq("input"), anyString(), eq(this.processor.input()),
-				Mockito.<ConsumerProperties>any());
+		Mockito.verify(binder).bindConsumer(eq("input"), isNull(), eq(this.processor.input()),
+				Mockito.any());
 		Mockito.verify(binder).bindProducer(eq("output"), eq(this.processor.output()),
-				Mockito.<ProducerProperties>any());
+				Mockito.any());
 		verifyNoMoreInteractions(binder);
 	}
 
 	@EnableBinding(Processor.class)
 	@EnableAutoConfiguration
-	@Import(MockBinderRegistryConfiguration.class)
 	public static class TestProcessor {
 
 	}

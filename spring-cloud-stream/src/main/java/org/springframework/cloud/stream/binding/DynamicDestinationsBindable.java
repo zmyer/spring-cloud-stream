@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,32 +24,32 @@ import java.util.Set;
 import org.springframework.cloud.stream.binder.Binding;
 
 /**
- * A {@link BindableAdapter} that stores the dynamic destination names and handles their
+ * A {@link Bindable} that stores the dynamic destination names and handles their
  * unbinding.
  *
- * This class is not thread-safe.
  *
  * @author Ilayaperumal Gopinathan
+ * @author Oleg Zhurakousky
  */
-public final class DynamicDestinationsBindable extends BindableAdapter {
+public final class DynamicDestinationsBindable implements Bindable {
 
 	/**
 	 * Map containing dynamic channel names and their bindings.
 	 */
-	private Map<String, Binding> outputBindings = new HashMap<>();
+	private final Map<String, Binding<?>> outputBindings = new HashMap<>();
 
-	public void addOutputBinding(String name, Binding binding) {
+	public synchronized void addOutputBinding(String name, Binding<?> binding) {
 		this.outputBindings.put(name, binding);
 	}
 
 	@Override
-	public Set<String> getOutputs() {
+	public synchronized Set<String> getOutputs() {
 		return Collections.unmodifiableSet(outputBindings.keySet());
 	}
 
 	@Override
-	public void unbindOutputs(BindingService adapter) {
-		for (Map.Entry<String, Binding> entry : outputBindings.entrySet()) {
+	public synchronized void unbindOutputs(BindingService adapter) {
+		for (Map.Entry<String, Binding<?>> entry : outputBindings.entrySet()) {
 			entry.getValue().unbind();
 		}
 		outputBindings.clear();

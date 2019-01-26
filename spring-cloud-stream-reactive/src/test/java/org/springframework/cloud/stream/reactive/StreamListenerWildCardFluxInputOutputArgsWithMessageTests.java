@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,16 +42,17 @@ import static org.springframework.cloud.stream.binding.StreamListenerErrorMessag
 
 /**
  * @author Ilayaperumal Gopinathan
+ * @author Oleg Zhurakousky
  */
 public class StreamListenerWildCardFluxInputOutputArgsWithMessageTests {
 
+	@SuppressWarnings("unchecked")
 	private static void sendMessageAndValidate(ConfigurableApplicationContext context) throws InterruptedException {
-		@SuppressWarnings("unchecked")
 		Processor processor = context.getBean(Processor.class);
 		String sentPayload = "hello " + UUID.randomUUID().toString();
 		processor.input().send(MessageBuilder.withPayload(sentPayload).setHeader("contentType", "text/plain").build());
 		MessageCollector messageCollector = context.getBean(MessageCollector.class);
-		Message<?> result = messageCollector.forChannel(processor.output()).poll(1000, TimeUnit.MILLISECONDS);
+		Message<String> result = (Message<String>) messageCollector.forChannel(processor.output()).poll(1000, TimeUnit.MILLISECONDS);
 		assertThat(result).isNotNull();
 		assertThat(result.getPayload()).isEqualTo(sentPayload.toUpperCase());
 	}
@@ -59,7 +60,7 @@ public class StreamListenerWildCardFluxInputOutputArgsWithMessageTests {
 	@Test
 	public void testWildCardFluxInputOutputArgsWithMessage() throws Exception {
 		ConfigurableApplicationContext context = SpringApplication
-				.run(TestWildCardFluxInputOutputArgsWithMessage1.class, "--server.port=0");
+				.run(TestWildCardFluxInputOutputArgsWithMessage1.class, "--server.port=0","--spring.cloud.stream.bindings.output.contentType=text/plain");
 		sendMessageAndValidate(context);
 		context.close();
 	}

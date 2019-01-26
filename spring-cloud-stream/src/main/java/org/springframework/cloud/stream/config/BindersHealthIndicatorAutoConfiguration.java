@@ -19,17 +19,20 @@ package org.springframework.cloud.stream.config;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.actuate.autoconfigure.ConditionalOnEnabledHealthIndicator;
-import org.springframework.boot.actuate.autoconfigure.EndpointAutoConfiguration;
+import org.springframework.boot.actuate.autoconfigure.endpoint.EndpointAutoConfiguration;
+import org.springframework.boot.actuate.autoconfigure.health.ConditionalOnEnabledHealthIndicator;
 import org.springframework.boot.actuate.health.AbstractHealthIndicator;
 import org.springframework.boot.actuate.health.CompositeHealthIndicator;
+import org.springframework.boot.actuate.health.DefaultHealthIndicatorRegistry;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.actuate.health.OrderedHealthAggregator;
+import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.cloud.stream.binder.BinderFactory;
 import org.springframework.cloud.stream.binder.DefaultBinderFactory;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -41,14 +44,15 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthIndicator")
 @ConditionalOnEnabledHealthIndicator("binders")
 @AutoConfigureBefore(EndpointAutoConfiguration.class)
-@ConditionalOnBean(DefaultBinderFactory.class)
+@ConditionalOnBean(BinderFactory.class)
+@AutoConfigureAfter(BindingServiceConfiguration.class)
 @Configuration
 public class BindersHealthIndicatorAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean(name = "bindersHealthIndicator")
 	public CompositeHealthIndicator bindersHealthIndicator() {
-		return new CompositeHealthIndicator(new OrderedHealthAggregator());
+		return new CompositeHealthIndicator(new OrderedHealthAggregator(), new DefaultHealthIndicatorRegistry());
 	}
 
 	@Bean
@@ -82,7 +86,7 @@ public class BindersHealthIndicatorAutoConfiguration {
 				// this can happen due to the fact that configuration is inherited
 				HealthIndicator binderHealthIndicator = indicators.isEmpty() ? new DefaultHealthIndicator()
 						: new CompositeHealthIndicator(healthAggregator, indicators);
-				this.bindersHealthIndicator.addHealthIndicator(binderConfigurationName, binderHealthIndicator);
+				bindersHealthIndicator.getRegistry().register(binderConfigurationName, binderHealthIndicator);
 			}
 		}
 

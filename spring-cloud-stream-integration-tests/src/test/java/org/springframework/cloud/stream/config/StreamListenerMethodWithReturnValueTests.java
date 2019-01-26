@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import org.assertj.core.api.Assertions;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -44,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * @author Marius Bogoevici
  * @author Ilayaperumal Gopinathan
+ * @author Oleg Zhurakousky
  */
 @RunWith(Parameterized.class)
 public class StreamListenerMethodWithReturnValueTests {
@@ -55,7 +57,7 @@ public class StreamListenerMethodWithReturnValueTests {
 	}
 
 	@Parameterized.Parameters
-	public static Collection InputConfigs() {
+	public static Collection<?> InputConfigs() {
 		return Arrays.asList(new Class[] { TestStringProcessor1.class, TestStringProcessor2.class });
 	}
 
@@ -63,7 +65,7 @@ public class StreamListenerMethodWithReturnValueTests {
 	@SuppressWarnings("unchecked")
 	public void testReturn() throws Exception {
 		ConfigurableApplicationContext context = SpringApplication
-				.run(this.configClass, "--server.port=0");
+				.run(this.configClass, "--server.port=0","--spring.jmx.enabled=false");
 		MessageCollector collector = context.getBean(MessageCollector.class);
 		Processor processor = context.getBean(Processor.class);
 		String id = UUID.randomUUID().toString();
@@ -74,10 +76,10 @@ public class StreamListenerMethodWithReturnValueTests {
 				.forChannel(processor.output()).poll(1, TimeUnit.SECONDS);
 		TestStringProcessor testStringProcessor = context
 				.getBean(TestStringProcessor.class);
-		assertThat(testStringProcessor.receivedPojos).hasSize(1);
-		assertThat(testStringProcessor.receivedPojos.get(0)).hasFieldOrPropertyWithValue("foo", "barbar" + id);
+		Assertions.assertThat(testStringProcessor.receivedPojos).hasSize(1);
+		Assertions.assertThat(testStringProcessor.receivedPojos.get(0)).hasFieldOrPropertyWithValue("foo", "barbar" + id);
 		assertThat(message).isNotNull();
-		assertThat(message.getPayload()).isEqualTo("barbar" + id);
+		assertThat(message.getPayload()).contains("barbar" + id);
 		context.close();
 	}
 

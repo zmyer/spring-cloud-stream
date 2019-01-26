@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2017 the original author or authors.
+ * Copyright 2015-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,44 +16,53 @@
 
 package org.springframework.cloud.stream.binder;
 
+import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
+import java.util.Map.Entry;
 import java.util.Set;
 
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.boot.Banner.Mode;
+import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.cloud.stream.config.SpelExpressionConverterConfiguration;
 import org.springframework.cloud.stream.reflection.GenericsUtils;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.util.Assert;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+
 
 /**
  * Default {@link BinderFactory} implementation.
  *
  * @author Marius Bogoevici
  * @author Ilayaperumal Gopinathan
+ * @author Gary Russell
+ * @author Oleg Zhurakousky
+ * @author Soby Chacko
+ * @author Artem Bilan
  */
 public class DefaultBinderFactory implements BinderFactory, DisposableBean, ApplicationContextAware {
 
 	private final Map<String, BinderConfiguration> binderConfigurations;
 
-	private final Map<String, BinderInstanceHolder> binderInstanceCache = new HashMap<>();
+	private final Map<String, Entry<Binder<?, ?, ?>, ConfigurableApplicationContext>> binderInstanceCache = new HashMap<>();
 
 	private volatile ConfigurableApplicationContext context;
 
-	private Map<String, String> defaultBinderForBindingTargetType = new HashMap<>();
+	private final Map<String, String> defaultBinderForBindingTargetType = new HashMap<>();
 
 	private Collection<Listener> listeners;
 
@@ -82,27 +91,47 @@ public class DefaultBinderFactory implements BinderFactory, DisposableBean, Appl
 	}
 
 	@Override
-	public void destroy() throws Exception {
-		for (Map.Entry<String, BinderInstanceHolder> entry : this.binderInstanceCache.entrySet()) {
-			BinderInstanceHolder binderInstanceHolder = entry.getValue();
-			binderInstanceHolder.getBinderContext().close();
-		}
+	public void destroy() {
+		this.binderInstanceCache.values().stream().map(Entry::getValue).forEach(ConfigurableApplicationContext::close);
 		this.defaultBinderForBindingTargetType.clear();
 	}
 
+	@SuppressWarnings({"unchecked", "rawtypes"})
 	@Override
 	public synchronized <T> Binder<T, ?, ?> getBinder(String name, Class<? extends T> bindingTargetType) {
+
+		String binderName = StringUtils.hasText(name) ? name : this.defaultBinder;
+
+		Map<String, Binder> binders = this.context == null ? Collections.emptyMap() : this.context.getBeansOfType(Binder.class);
+		Binder<T, ConsumerProperties, ProducerProperties> binder;
+		if (StringUtils.hasText(binderName) && binders.containsKey(binderName)) {
+			binder = (Binder<T, ConsumerProperties, ProducerProperties>) this.context.getBean(binderName);
+		}
+		else if (binders.size() == 1) {
+			binder = binders.values().iterator().next();
+		}
+		else  if (binders.size() > 1) {
+			throw new IllegalStateException("Multiple binders are available, however neither default nor "
+					+ "per-destination binder name is provided. Available binders are " + binders.keySet());
+		}
+		else {
+			/*
+			 * This is the fall back to the old bootstrap that relies on spring.binders.
+			 */
+			binder = this.doGetBinder(binderName, bindingTargetType);
+		}
+		return binder;
+	}
+
+
+	private <T> Binder<T, ConsumerProperties, ProducerProperties> doGetBinder(String name, Class<? extends T> bindingTargetType) {
 		String configurationName;
 		// Fall back to a default if no argument is provided
 		if (StringUtils.isEmpty(name)) {
-			if (this.binderConfigurations.size() == 0) {
-				throw new IllegalStateException(
-						"A default binder has been requested, but there there is no binder available");
-			}
-			else if (!StringUtils.hasText(this.defaultBinder)) {
+			Assert.notEmpty(this.binderConfigurations, "A default binder has been requested, but there is no binder available");
+			if (!StringUtils.hasText(this.defaultBinder)) {
 				Set<String> defaultCandidateConfigurations = new HashSet<>();
-				for (Map.Entry<String, BinderConfiguration> binderConfigurationEntry : this.binderConfigurations
-						.entrySet()) {
+				for (Map.Entry<String, BinderConfiguration> binderConfigurationEntry : this.binderConfigurations.entrySet()) {
 					if (binderConfigurationEntry.getValue().isDefaultCandidate()) {
 						defaultCandidateConfigurations.add(binderConfigurationEntry.getKey());
 					}
@@ -112,36 +141,27 @@ public class DefaultBinderFactory implements BinderFactory, DisposableBean, Appl
 					this.defaultBinderForBindingTargetType.put(bindingTargetType.getName(), configurationName);
 				}
 				else {
-					if (defaultCandidateConfigurations.size() > 1) {
-						List<String> candidatesForBindableType = new ArrayList<>();
-						for (String defaultCandidateConfiguration : defaultCandidateConfigurations) {
-							Binder<Object, ?, ?> binderInstance = getBinderInstance(defaultCandidateConfiguration);
-							Class<?> binderType = GenericsUtils.getParameterType(binderInstance.getClass(),
-									Binder.class, 0);
-							if (binderType.isAssignableFrom(bindingTargetType)) {
-								candidatesForBindableType.add(defaultCandidateConfiguration);
-							}
-						}
-						if (candidatesForBindableType.size() == 1) {
-							configurationName = candidatesForBindableType.iterator().next();
-							this.defaultBinderForBindingTargetType.put(bindingTargetType.getName(), configurationName);
-						}
-						else if (candidatesForBindableType.size() > 1) {
-							throw new IllegalStateException(
-									"A default binder has been requested, but there is more than one binder available for '"
-											+ bindingTargetType.getName() + "' : "
-											+ StringUtils.collectionToCommaDelimitedString(candidatesForBindableType)
-											+ ", and no default binder has been set.");
-						}
-						else {
-							throw new IllegalStateException("A default binder has been requested, but none of the "
-									+ "registered binders can bind a '" + bindingTargetType + "': "
-									+ StringUtils.collectionToCommaDelimitedString(defaultCandidateConfigurations));
+					List<String> candidatesForBindableType = new ArrayList<>();
+					for (String defaultCandidateConfiguration : defaultCandidateConfigurations) {
+						Binder<Object, ?, ?> binderInstance = getBinderInstance(defaultCandidateConfiguration);
+						Class<?> binderType = GenericsUtils.getParameterType(binderInstance.getClass(), Binder.class, 0);
+						if (binderType.isAssignableFrom(bindingTargetType)) {
+							candidatesForBindableType.add(defaultCandidateConfiguration);
 						}
 					}
+					if (candidatesForBindableType.size() == 1) {
+						configurationName = candidatesForBindableType.iterator().next();
+						this.defaultBinderForBindingTargetType.put(bindingTargetType.getName(), configurationName);
+					}
 					else {
-						throw new IllegalArgumentException(
-								"A default binder has been requested, but there is no default available");
+						String countMsg = (candidatesForBindableType.size() == 0)
+								? "are no binders"
+								: "is more than one binder";
+						throw new IllegalStateException(
+								"A default binder has been requested, but there " + countMsg
+								+ " available for '" + bindingTargetType.getName() + "' : "
+								+ StringUtils.collectionToCommaDelimitedString(candidatesForBindableType)
+								+ ", and no default binder has been set.");
 					}
 				}
 			}
@@ -152,46 +172,59 @@ public class DefaultBinderFactory implements BinderFactory, DisposableBean, Appl
 		else {
 			configurationName = name;
 		}
-		Binder<T, ?, ?> binderInstance = getBinderInstance(configurationName);
-		if (!(GenericsUtils.getParameterType(binderInstance.getClass(), Binder.class, 0)
-				.isAssignableFrom(bindingTargetType))) {
-			throw new IllegalStateException(
-					"The binder '" + configurationName + "' cannot bind a " + bindingTargetType.getName());
-		}
+		Binder<T, ConsumerProperties, ProducerProperties> binderInstance = getBinderInstance(configurationName);
+		Assert.state(verifyBinderTypeMatchesTarget(binderInstance, bindingTargetType),
+				"The binder '" + configurationName + "' cannot bind a " + bindingTargetType.getName());
 		return binderInstance;
 	}
 
-	private <T> Binder<T, ?, ?> getBinderInstance(String configurationName) {
+	/**
+	 * Return true if the binder is a {@link PollableConsumerBinder} and the target type
+	 * is a {@link PollableSource} and their generic types match (e.g. MessageHandler), OR
+	 * if it's a {@link Binder} and the target matches the binder's generic type.
+	 * @param binderInstance the binder.
+	 * @param bindingTargetType the binding target type.
+	 * @return true if the conditions match.
+	 */
+	private <T> boolean verifyBinderTypeMatchesTarget(Binder<T, ?, ?> binderInstance,
+			Class<? extends T> bindingTargetType) {
+		return (binderInstance instanceof PollableConsumerBinder
+				&& GenericsUtils.checkCompatiblePollableBinder(binderInstance, bindingTargetType))
+			|| GenericsUtils.getParameterType(binderInstance.getClass(), Binder.class, 0)
+					.isAssignableFrom(bindingTargetType);
+	}
+
+	@SuppressWarnings("unchecked")
+	private <T> Binder<T, ConsumerProperties, ProducerProperties> getBinderInstance(String configurationName) {
 		if (!this.binderInstanceCache.containsKey(configurationName)) {
 			BinderConfiguration binderConfiguration = this.binderConfigurations.get(configurationName);
-			if (binderConfiguration == null) {
-				throw new IllegalStateException("Unknown binder configuration: " + configurationName);
-			}
+			Assert.state(binderConfiguration != null, "Unknown binder configuration: " + configurationName);
 			BinderType binderType = this.binderTypeRegistry.get(binderConfiguration.getBinderType());
 			Assert.notNull(binderType, "Binder type " + binderConfiguration.getBinderType() + " is not defined");
-			Properties binderProperties = binderConfiguration.getProperties();
+
+			Map<String, String> binderProperties = new HashMap<>();
+			this.flatten(null, binderConfiguration.getProperties(), binderProperties);
+
 			// Convert all properties to arguments, so that they receive maximum
 			// precedence
 			ArrayList<String> args = new ArrayList<>();
-			for (Map.Entry<Object, Object> property : binderProperties.entrySet()) {
+			for (Map.Entry<String, String> property : binderProperties.entrySet()) {
 				args.add(String.format("--%s=%s", property.getKey(), property.getValue()));
 			}
 			// Initialize the domain with a unique name based on the bootstrapping context
 			// setting
 			ConfigurableEnvironment environment = this.context != null ? this.context.getEnvironment() : null;
-			String defaultDomain = environment != null ? environment.getProperty("spring.jmx.default-domain") : null;
-			if (defaultDomain == null) {
-				defaultDomain = "";
-			}
-			else {
-				defaultDomain += ".";
-			}
+			String defaultDomain = environment != null ? environment.getProperty("spring.jmx.default-domain") : "";
 			args.add("--spring.jmx.default-domain=" + defaultDomain + "binder." + configurationName);
-			args.add("--spring.main.applicationContextClass=" + AnnotationConfigApplicationContext.class.getName());
-			List<Class<?>> configurationClasses = new ArrayList<Class<?>>(
-					Arrays.asList(binderType.getConfigurationClasses()));
-			SpringApplicationBuilder springApplicationBuilder = new SpringApplicationBuilder()
-					.sources(configurationClasses.toArray(new Class<?>[] {})).bannerMode(Mode.OFF).web(false);
+			// Initializing SpringApplicationBuilder with SpelExpressionConverterConfiguration due to the fact that
+			// infrastructure related configuration is not propagated in a multi binder scenario.
+			// See this GH issue for more details: https://github.com/spring-cloud/spring-cloud-stream/issues/1412
+			// and the associated PR: https://github.com/spring-cloud/spring-cloud-stream/pull/1413
+			SpringApplicationBuilder springApplicationBuilder = new SpringApplicationBuilder(SpelExpressionConverterConfiguration.class)
+					.sources(binderType.getConfigurationClasses())
+					.bannerMode(Mode.OFF)
+					.logStartupInfo(false)
+					.web(WebApplicationType.NONE);
 			// If the environment is not customized and a main context is available, we
 			// will set the latter as parent.
 			// This ensures that the defaults and user-defined customizations (e.g. custom
@@ -203,25 +236,52 @@ public class DefaultBinderFactory implements BinderFactory, DisposableBean, Appl
 			if (useApplicationContextAsParent) {
 				springApplicationBuilder.parent(this.context);
 			}
-			if (useApplicationContextAsParent || (environment != null && binderConfiguration.isInheritEnvironment())) {
-				if (environment != null) {
-					StandardEnvironment binderEnvironment = new StandardEnvironment();
-					binderEnvironment.merge(environment);
-					springApplicationBuilder.environment(binderEnvironment);
-				}
+			// If the current application context is not set as parent and the environment is set,
+			// provide the current context as an additional bean in the BeanFactory.
+			if (environment != null && !useApplicationContextAsParent){
+				springApplicationBuilder.initializers(new InitializerWithOuterContext(this.context));
 			}
-			ConfigurableApplicationContext binderProducingContext = springApplicationBuilder
-					.run(args.toArray(new String[args.size()]));
-			@SuppressWarnings("unchecked")
+
+			if (environment != null && (useApplicationContextAsParent || binderConfiguration.isInheritEnvironment())) {
+				StandardEnvironment binderEnvironment = new StandardEnvironment();
+				binderEnvironment.merge(environment);
+				// See ConfigurationPropertySources.ATTACHED_PROPERTY_SOURCE_NAME
+				binderEnvironment.getPropertySources().remove("configurationProperties");
+				springApplicationBuilder.environment(binderEnvironment);
+			}
+			ConfigurableApplicationContext binderProducingContext =
+					springApplicationBuilder.run(args.toArray(new String[0]));
+
 			Binder<T, ?, ?> binder = binderProducingContext.getBean(Binder.class);
-			if (this.listeners != null) {
+			/*
+			 * This will ensure that application defined errorChannel and other beans are accessible within binder's context
+			 * (see https://github.com/spring-cloud/spring-cloud-stream/issues/1384)
+			 */
+			if (this.context != null && binder instanceof ApplicationContextAware) {
+				((ApplicationContextAware)binder).setApplicationContext(this.context);
+			}
+			if (!CollectionUtils.isEmpty(this.listeners)) {
 				for (Listener binderFactoryListener : listeners) {
 					binderFactoryListener.afterBinderContextInitialized(configurationName, binderProducingContext);
 				}
 			}
-			this.binderInstanceCache.put(configurationName, new BinderInstanceHolder(binder, binderProducingContext));
+			this.binderInstanceCache.put(configurationName, new SimpleImmutableEntry<>(binder, binderProducingContext));
 		}
-		return (Binder<T, ?, ?>) this.binderInstanceCache.get(configurationName).getBinderInstance();
+		return (Binder<T, ConsumerProperties, ProducerProperties>) this.binderInstanceCache.get(configurationName).getKey();
+	}
+
+	/**
+	 * Ensures that nested properties are flattened (i.e., foo.bar=baz instead of foo={bar=baz})
+	 */
+	@SuppressWarnings("unchecked")
+	private void flatten(String propertyName, Object value, Map<String, String> flattenedProperties) {
+		if (value instanceof Map) {
+			((Map<Object, Object>) value)
+				.forEach((k, v) -> flatten((propertyName != null ? propertyName + "." : "") + k, v, flattenedProperties));
+		}
+		else {
+			flattenedProperties.put(propertyName, value.toString());
+		}
 	}
 
 	/**
@@ -243,27 +303,17 @@ public class DefaultBinderFactory implements BinderFactory, DisposableBean, Appl
 				ConfigurableApplicationContext binderContext);
 	}
 
-	/**
-	 * Utility class for storing {@link Binder} instances, along with their associated
-	 * contexts.
-	 */
-	private static final class BinderInstanceHolder {
+	private static class InitializerWithOuterContext implements ApplicationContextInitializer<ConfigurableApplicationContext> {
+		private final ApplicationContext context;
 
-		private final Binder<?, ?, ?> binderInstance;
-
-		private final ConfigurableApplicationContext binderContext;
-
-		private BinderInstanceHolder(Binder<?, ?, ?> binderInstance, ConfigurableApplicationContext binderContext) {
-			this.binderInstance = binderInstance;
-			this.binderContext = binderContext;
+		InitializerWithOuterContext(ApplicationContext context) {
+			this.context = context;
 		}
 
-		public Binder<?, ?, ?> getBinderInstance() {
-			return this.binderInstance;
-		}
-
-		public ConfigurableApplicationContext getBinderContext() {
-			return this.binderContext;
+		@Override
+		public void initialize(ConfigurableApplicationContext applicationContext) {
+			applicationContext.getBeanFactory().registerSingleton("outerContext", context);
 		}
 	}
+
 }

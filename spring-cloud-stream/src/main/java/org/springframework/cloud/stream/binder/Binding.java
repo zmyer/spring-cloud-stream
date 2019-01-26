@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,12 @@
 
 package org.springframework.cloud.stream.binder;
 
+import java.util.Collections;
+import java.util.Map;
+
+import org.springframework.cloud.stream.endpoint.BindingsEndpoint;
+import org.springframework.integration.endpoint.Pausable;
+
 /**
  * Represents a binding between an input or output and an adapter endpoint that connects
  * via a Binder. The binding could be for a consumer or a producer. A consumer binding
@@ -26,9 +32,73 @@ package org.springframework.cloud.stream.binder;
  * @author Mark Fisher
  * @author Gary Russell
  * @author Marius Bogoevici
+ * @author Oleg Zhurakousky
+ *
  * @see org.springframework.cloud.stream.annotation.EnableBinding
  */
-public interface Binding<T> {
+public interface Binding<T> extends Pausable {
+
+	default Map<String, Object> getExtendedInfo() {
+		return Collections.emptyMap();
+	}
+
+	/**
+	 * Stops the target component represented by this instance.
+	 * NOTE: At the time the instance is created the component is already started.
+	 * This operation is typically used by actuator to re-bind/re-start.
+	 *
+	 * @see BindingsEndpoint
+	 */
+	default void start() {}
+
+	/**
+	 * Starts the target component represented by this instance.
+	 * NOTE: At the time the instance is created the component is already started.
+	 * This operation is typically used by actuator to re-bind/re-start.
+	 *
+	 * @see BindingsEndpoint
+	 */
+	default void stop() {}
+
+	/**
+	 * Pauses the target component represented by this instance if and only if the component
+	 * implements {@link Pausable} interface
+	 * NOTE: At the time the instance is created the component is already started and active.
+	 * This operation is typically used by actuator to pause/resume.
+	 *
+	 * @see BindingsEndpoint
+	 */
+	default void pause() {
+		this.stop();
+	}
+
+	/**
+	 * Resumes the target component represented by this instance if and only if the component
+	 * implements {@link Pausable} interface
+	 * NOTE: At the time the instance is created the component is already started and active.
+	 * This operation is typically used by actuator to pause/resume.
+	 *
+	 * @see BindingsEndpoint
+	 */
+	default void resume() {
+		this.start();
+	}
+
+	/**
+	 * Returns 'true' if the target component represented by this instance is running.
+	 */
+	default boolean isRunning() {
+		return false;
+	}
+
+	/**
+	 * Returns the name of this binding  (i.e., channel name)
+	 *
+	 * @return binding name
+	 */
+	default String getName() {
+		return null;
+	}
 
 	/**
 	 * Unbinds the target component represented by this instance and stops any active
@@ -37,4 +107,15 @@ public interface Binding<T> {
 	 * and a new Binding should be created instead.
 	 */
 	void unbind();
+
+	/**
+	 * Returns boolean flag representing this binding's type. If 'true' this binding is an 'input' binding
+	 * otherwise it is 'output' (as in binding annotated with either @Input or @Output).
+	 *
+	 * @return 'true' if this binding represents an input binding.
+	 */
+	default boolean isInput() {
+		throw new UnsupportedOperationException("Binding implementation `" + this.getClass().getName()
+				+ "` must implement this operation before it is called");
+	}
 }

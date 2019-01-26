@@ -25,7 +25,6 @@ import java.util.UUID;
 
 import org.junit.Test;
 
-import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.cloud.stream.annotation.EnableBinding;
@@ -34,6 +33,7 @@ import org.springframework.cloud.stream.binding.StreamListenerAnnotationBeanPost
 import org.springframework.cloud.stream.messaging.Sink;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.integration.support.MessageBuilder;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -68,6 +68,7 @@ public class StreamListenerAnnotationBeanPostProcessorOverrideTest {
 		context.close();
 	}
 
+	@Configuration
 	@EnableBinding(Sink.class)
 	@EnableAutoConfiguration
 	public static class TestPojoWithAnnotatedArguments {
@@ -78,7 +79,7 @@ public class StreamListenerAnnotationBeanPostProcessorOverrideTest {
 		 * Overrides the default {@link StreamListenerAnnotationBeanPostProcessor}.
 		 */
 		@Bean(name = STREAM_LISTENER_ANNOTATION_BEAN_POST_PROCESSOR_NAME)
-		public static BeanPostProcessor streamListenerAnnotationBeanPostProcessor() {
+		public static StreamListenerAnnotationBeanPostProcessor streamListenerAnnotationBeanPostProcessor() {
 			return new StreamListenerAnnotationBeanPostProcessor() {
 				@Override
 				protected StreamListener postProcessAnnotation(StreamListener originalAnnotation,

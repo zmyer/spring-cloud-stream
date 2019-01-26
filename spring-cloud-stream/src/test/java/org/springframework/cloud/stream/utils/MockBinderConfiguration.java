@@ -32,4 +32,5 @@ public class MockBinderConfiguration {
 	public Binder<?, ?, ?> binder() {
 		return Mockito.mock(Binder.class, Mockito.withSettings().defaultAnswer(Mockito.RETURNS_MOCKS));
 	}
+
 }

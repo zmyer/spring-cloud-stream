@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 the original author or authors.
+ * Copyright 2015-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 
 import org.springframework.cloud.stream.binder.ConsumerProperties;
 import org.springframework.cloud.stream.binder.ProducerProperties;
+import org.springframework.util.MimeType;
+import org.springframework.util.MimeTypeUtils;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -30,10 +32,14 @@ import org.springframework.validation.annotation.Validated;
  * @author Marius Bogoevici
  * @author Ilayaperumal Gopinathan
  * @author Gary Russell
+ * @author Soby Chacko
+ * @author Oleg Zhurakousky
  */
 @JsonInclude(Include.NON_DEFAULT)
 @Validated
-public class BindingProperties {
+public class BindingProperties  {
+
+	public static final MimeType DEFAULT_CONTENT_TYPE = MimeTypeUtils.APPLICATION_JSON;
 
 	private static final String COMMA = ",";
 
@@ -52,15 +58,29 @@ public class BindingProperties {
 	 */
 	private String group;
 
-	// Properties for both inbound/outbound
+	// Properties for both input and output bindings
 
-	private String contentType;
+	/**
+	 * Specifies content-type that will be used by this binding in the event
+	 * it is not specified in Message headers. Default: 'application/json'.
+	 */
+	private String contentType = DEFAULT_CONTENT_TYPE.toString();
 
+	/**
+	 * The name of the binder to use for this binding in the event multiple binders available (e.g., 'rabbit');
+	 */
 	private String binder;
 
+	/**
+	 * Additional consumer specific properties (see {@link ConsumerProperties})
+	 */
 	private ConsumerProperties consumer;
 
+	/**
+	 * Additional producer specific properties (see {@link ProducerProperties})
+	 */
 	private ProducerProperties producer;
+
 
 	public String getDestination() {
 		return this.destination;
@@ -115,6 +135,7 @@ public class BindingProperties {
 		return consumer == null || producer == null;
 	}
 
+	@Override
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
 		sb.append("destination=" + this.destination);
@@ -132,5 +153,4 @@ public class BindingProperties {
 		sb.deleteCharAt(sb.lastIndexOf(COMMA));
 		return "BindingProperties{" + sb.toString() + "}";
 	}
-
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,6 +44,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * @author Marius Bogoevici
  * @author Ilayaperumal Gopinathan
+ * @author Vinicius Carvalho
+ * @author Oleg Zhurakousky
  */
 @RunWith(Parameterized.class)
 public class StreamListenerMessageArgumentTests {
@@ -55,7 +57,7 @@ public class StreamListenerMessageArgumentTests {
 	}
 
 	@Parameterized.Parameters
-	public static Collection InputConfigs() {
+	public static Collection<?> InputConfigs() {
 		return Arrays.asList(new Class[] { TestPojoWithMessageArgument1.class, TestPojoWithMessageArgument2.class });
 	}
 
@@ -63,7 +65,7 @@ public class StreamListenerMessageArgumentTests {
 	@SuppressWarnings("unchecked")
 	public void testMessageArgument() throws Exception {
 		ConfigurableApplicationContext context = SpringApplication
-				.run(this.configClass, "--server.port=0");
+				.run(this.configClass, "--server.port=0", "--spring.cloud.stream.bindings.output.contentType=text/plain","--spring.jmx.enabled=false");
 		MessageCollector collector = context.getBean(MessageCollector.class);
 		Processor processor = context.getBean(Processor.class);
 		String id = UUID.randomUUID().toString();
@@ -73,10 +75,10 @@ public class StreamListenerMessageArgumentTests {
 				.getBean(TestPojoWithMessageArgument.class);
 		assertThat(testPojoWithMessageArgument.receivedMessages).hasSize(1);
 		assertThat(testPojoWithMessageArgument.receivedMessages.get(0).getPayload()).isEqualTo("barbar" + id);
-		Message<StreamListenerTestUtils.BarPojo> message = (Message<StreamListenerTestUtils.BarPojo>) collector
+		Message<String> message = (Message<String>) collector
 				.forChannel(processor.output()).poll(1, TimeUnit.SECONDS);
 		assertThat(message).isNotNull();
-		assertThat(message.getPayload().getBar()).isEqualTo("barbar" + id);
+		assertThat(message.getPayload()).contains("barbar" + id);
 		context.close();
 	}
 

@@ -22,7 +22,6 @@ import java.util.UUID;
 
 import org.junit.Test;
 
-import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.cloud.stream.annotation.EnableBinding;
@@ -44,7 +43,6 @@ import static org.assertj.core.api.Assertions.fail;
 public class StreamListenerWithConditionsTest {
 
 	@Test
-	@SuppressWarnings("unchecked")
 	public void testAnnotatedArgumentsWithConditionalClass() throws Exception {
 		ConfigurableApplicationContext context = SpringApplication.run(TestPojoWithAnnotatedArguments.class,
 				"--server.port=0");
@@ -72,7 +70,6 @@ public class StreamListenerWithConditionsTest {
 	}
 
 	@Test
-	@SuppressWarnings("unchecked")
 	public void testConditionalFailsWithReturnValue() throws Exception {
 		try {
 			ConfigurableApplicationContext context = SpringApplication.run(
@@ -81,15 +78,12 @@ public class StreamListenerWithConditionsTest {
 			context.close();
 			fail("Context creation failure expected");
 		}
-		catch (BeanCreationException e) {
-			assertThat(e).hasRootCauseInstanceOf(IllegalArgumentException.class);
-			assertThat(e.getCause())
-					.hasMessageContaining(StreamListenerErrorMessages.CONDITION_ON_METHOD_RETURNING_VALUE);
+		catch (IllegalArgumentException e) {
+			assertThat(e.getMessage()).contains(StreamListenerErrorMessages.CONDITION_ON_METHOD_RETURNING_VALUE);
 		}
 	}
 
 	@Test
-	@SuppressWarnings("unchecked")
 	public void testConditionalFailsWithDeclarativeMethod() throws Exception {
 		try {
 			ConfigurableApplicationContext context = SpringApplication.run(
@@ -98,9 +92,8 @@ public class StreamListenerWithConditionsTest {
 			context.close();
 			fail("Context creation failure expected");
 		}
-		catch (BeanCreationException e) {
-			assertThat(e).hasRootCauseInstanceOf(IllegalArgumentException.class);
-			assertThat(e.getCause()).hasMessageContaining(StreamListenerErrorMessages.CONDITION_ON_DECLARATIVE_METHOD);
+		catch (IllegalArgumentException e) {
+			assertThat(e.getMessage()).contains(StreamListenerErrorMessages.CONDITION_ON_DECLARATIVE_METHOD);
 		}
 	}
 

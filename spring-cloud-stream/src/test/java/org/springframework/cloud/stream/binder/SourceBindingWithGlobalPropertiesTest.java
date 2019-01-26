@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 the original author or authors.
+ * Copyright 2015-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,40 +25,42 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.stream.annotation.EnableBinding;
 import org.springframework.cloud.stream.config.BindingProperties;
-import org.springframework.cloud.stream.config.ChannelBindingServiceProperties;
+import org.springframework.cloud.stream.config.BindingServiceProperties;
 import org.springframework.cloud.stream.messaging.Source;
-import org.springframework.cloud.stream.utils.MockBinderRegistryConfiguration;
-import org.springframework.context.annotation.Import;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
 /**
  * @author Marius Bogoevici
  * @author Ilayaperumal Gopinathan
+ * @author Gary Russell
+ * @author Oleg Zhurakousky
  */
 @RunWith(SpringJUnit4ClassRunner.class)
 @SpringBootTest(classes = SourceBindingWithGlobalPropertiesTest.TestSource.class, properties = {
 		"spring.cloud.stream.default.contentType=application/json",
 		"spring.cloud.stream.bindings.output.destination=ticktock",
 		"spring.cloud.stream.default.producer.requiredGroups=someGroup",
-		"spring.cloud.stream.bindings.output.producer.headerMode=raw" })
+		"spring.cloud.stream.default.producer.partitionCount=1",
+		"spring.cloud.stream.bindings.output.producer.headerMode=none",
+		"spring.cloud.stream.bindings.output.producer.partitionCount=4",
+		"spring.cloud.stream.defaultBinder=mock"})
 public class SourceBindingWithGlobalPropertiesTest {
 
 	@Autowired
-	private ChannelBindingServiceProperties channelBindingServiceProperties;
+	private BindingServiceProperties serviceProperties;
 
-	@SuppressWarnings("unchecked")
 	@Test
 	public void testGlobalPropertiesSet() {
-		BindingProperties bindingProperties = channelBindingServiceProperties.getBindingProperties(Source.OUTPUT);
+		BindingProperties bindingProperties = serviceProperties.getBindingProperties(Source.OUTPUT);
 		Assertions.assertThat(bindingProperties.getContentType()).isEqualTo("application/json");
 		Assertions.assertThat(bindingProperties.getDestination()).isEqualTo("ticktock");
-		Assertions.assertThat(bindingProperties.getProducer().getRequiredGroups()).containsExactly("someGroup");
-		Assertions.assertThat(bindingProperties.getProducer().getHeaderMode()).isEqualTo(HeaderMode.raw);
+		Assertions.assertThat(bindingProperties.getProducer().getRequiredGroups()).containsExactly("someGroup"); // default propagates to producer
+		Assertions.assertThat(bindingProperties.getProducer().getPartitionCount()).isEqualTo(4); // validates binding property takes precedence over default
+		Assertions.assertThat(bindingProperties.getProducer().getHeaderMode()).isEqualTo(HeaderMode.none);
 	}
 
 	@EnableBinding(Source.class)
 	@EnableAutoConfiguration
-	@Import(MockBinderRegistryConfiguration.class)
 	public static class TestSource {
 
 	}

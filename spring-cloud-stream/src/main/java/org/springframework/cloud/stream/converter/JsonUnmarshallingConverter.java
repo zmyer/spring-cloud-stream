@@ -24,48 +24,30 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHeaders;
 import org.springframework.messaging.converter.AbstractMessageConverter;
 import org.springframework.messaging.converter.MessageConversionException;
-import org.springframework.util.MimeType;
-import org.springframework.util.MimeTypeUtils;
 
 /**
  * Message converter providing backwards compatibility for applications using an Java type
  * as input.
  *
  * @author Marius Bogoevici
+ *
+ * @deprecated as of 2.0.
  */
+// NOTE we need to revisit as to why do we need it in the first place, given that our first converter already handles JSON
+@Deprecated
 public class JsonUnmarshallingConverter extends AbstractMessageConverter {
 
 	private final ObjectMapper objectMapper;
 
 	protected JsonUnmarshallingConverter(ObjectMapper objectMapper) {
 		super(MessageConverterUtils.X_JAVA_OBJECT);
+		setStrictContentTypeMatch(true);
 		this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
 	}
 
 	@Override
 	protected boolean supports(Class<?> aClass) {
-		return true;
-	}
-
-	@Override
-	protected boolean canConvertFrom(Message<?> message, Class<?> targetClass) {
-		if ((message.getPayload() instanceof String) || (message.getPayload() instanceof byte[])) {
-			return true;
-		}
-		return canConvertFromBasedOnContentTypeHeader(message);
-	}
-
-	private boolean canConvertFromBasedOnContentTypeHeader(Message<?> message) {
-		Object contentTypeHeader = message.getHeaders().get(MessageHeaders.CONTENT_TYPE);
-		if (contentTypeHeader instanceof String) {
-			return MimeTypeUtils.APPLICATION_JSON.includes(MimeTypeUtils.parseMimeType((String) contentTypeHeader));
-		}
-		else if (contentTypeHeader instanceof MimeType) {
-			return MimeTypeUtils.APPLICATION_JSON.includes((MimeType) contentTypeHeader);
-		}
-		else {
-			return contentTypeHeader == null;
-		}
+		return String.class.isAssignableFrom(aClass) || byte[].class.isAssignableFrom(aClass) ;
 	}
 
 	@Override

@@ -17,7 +17,6 @@
 package org.springframework.cloud.stream.reactive;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.cloud.stream.binding.BindingService;
 import org.springframework.cloud.stream.converter.CompositeMessageConverterFactory;
@@ -46,34 +45,13 @@ public class ReactiveSupportAutoConfiguration {
 	}
 
 	@Bean
-	@ConditionalOnMissingBean(FluxToMessageChannelResultAdapter.class)
-	public FluxToMessageChannelResultAdapter fluxToMessageChannelResultAdapter() {
-		return new FluxToMessageChannelResultAdapter();
+	@ConditionalOnMissingBean(PublisherToMessageChannelResultAdapter.class)
+	public PublisherToMessageChannelResultAdapter fluxToMessageChannelResultAdapter() {
+		return new PublisherToMessageChannelResultAdapter();
 	}
 
-	@Configuration
-	@ConditionalOnClass(name = "rx.Observable")
-	public static class RxJava1SupportConfiguration {
-
-		@Bean
-		@ConditionalOnMissingBean(MessageChannelToInputObservableParameterAdapter.class)
-		public MessageChannelToInputObservableParameterAdapter messageChannelToInputObservableArgumentAdapter(
-				MessageChannelToInputFluxParameterAdapter messageChannelToFluxArgumentAdapter) {
-			return new MessageChannelToInputObservableParameterAdapter(messageChannelToFluxArgumentAdapter);
-		}
-
-		@Bean
-		@ConditionalOnMissingBean(MessageChannelToObservableSenderParameterAdapter.class)
-		public MessageChannelToObservableSenderParameterAdapter messageChannelToObservableSenderArgumentAdapter(
-				MessageChannelToFluxSenderParameterAdapter messageChannelToFluxSenderArgumentAdapter) {
-			return new MessageChannelToObservableSenderParameterAdapter(messageChannelToFluxSenderArgumentAdapter);
-		}
-
-		@Bean
-		@ConditionalOnMissingBean(ObservableToMessageChannelResultAdapter.class)
-		public ObservableToMessageChannelResultAdapter observableToMessageChannelResultAdapter(
-				FluxToMessageChannelResultAdapter fluxToMessageChannelResultAdapter) {
-			return new ObservableToMessageChannelResultAdapter(fluxToMessageChannelResultAdapter);
-		}
+	@Bean
+	public static StreamEmitterAnnotationBeanPostProcessor streamEmitterAnnotationBeanPostProcessor() {
+		return new StreamEmitterAnnotationBeanPostProcessor();
 	}
 }

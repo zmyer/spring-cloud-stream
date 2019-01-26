@@ -21,13 +21,15 @@ import java.util.Collections;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import org.springframework.cloud.stream.config.BindingProperties;
 import org.springframework.messaging.converter.AbstractMessageConverter;
 import org.springframework.messaging.converter.ByteArrayMessageConverter;
 import org.springframework.messaging.converter.CompositeMessageConverter;
-import org.springframework.messaging.converter.MappingJackson2MessageConverter;
+import org.springframework.messaging.converter.DefaultContentTypeResolver;
 import org.springframework.messaging.converter.MessageConverter;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.MimeType;
@@ -38,6 +40,8 @@ import org.springframework.util.MimeType;
  * @author David Turanski
  * @author Ilayaperumal Gopinathan
  * @author Marius Bogoevici
+ * @author Vinicius Carvalho
+ * @author Oleg Zhurakousky
  */
 public class CompositeMessageConverterFactory {
 
@@ -64,21 +68,34 @@ public class CompositeMessageConverterFactory {
 			this.converters = new ArrayList<>();
 		}
 		initDefaultConverters();
+
+		DefaultContentTypeResolver resolver = new DefaultContentTypeResolver();
+		resolver.setDefaultMimeType(BindingProperties.DEFAULT_CONTENT_TYPE);
+		this.converters.stream()
+			.filter(mc -> mc instanceof AbstractMessageConverter)
+			.forEach(mc -> ((AbstractMessageConverter)mc).setContentTypeResolver(resolver));
 	}
 
+	@SuppressWarnings("deprecation")
 	private void initDefaultConverters() {
+		ApplicationJsonMessageMarshallingConverter applicationJsonConverter = new ApplicationJsonMessageMarshallingConverter(this.objectMapper);
+		applicationJsonConverter.setStrictContentTypeMatch(true);
+		this.converters.add(applicationJsonConverter);
 		this.converters.add(new TupleJsonMessageConverter(this.objectMapper));
-
-		MappingJackson2MessageConverter jsonMessageConverter = new MappingJackson2MessageConverter();
-		jsonMessageConverter.setSerializedPayloadClass(String.class);
-		if (this.objectMapper != null) {
-			jsonMessageConverter.setObjectMapper(this.objectMapper);
-		}
-
-		this.converters.add(jsonMessageConverter);
-		this.converters.add(new ByteArrayMessageConverter());
+		this.converters.add(new ByteArrayMessageConverter() {
+			@Override
+			protected boolean supports(Class<?> clazz) {
+				if (!super.supports(clazz)) {
+					return (Object.class == clazz);
+				}
+				return true;
+			}
+		});
 		this.converters.add(new ObjectStringMessageConverter());
+
+		// Deprecated converters
 		this.converters.add(new JavaSerializationMessageConverter());
+		this.converters.add(new KryoMessageConverter(null,true));
 		this.converters.add(new JsonUnmarshallingConverter(this.objectMapper));
 	}
 

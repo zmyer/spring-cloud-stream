@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 
-import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.cloud.stream.annotation.EnableBinding;
@@ -45,12 +44,14 @@ import static org.springframework.cloud.stream.binding.StreamListenerErrorMessag
 /**
  * @author Marius Bogoevici
  * @author Ilayaperumal Gopinathan
+ * @author Vinicius Carvalho
+ * @author Oleg Zhurakousky
  */
 public class StreamListenerWithAnnotatedInputOutputArgsTests {
 
 	@Test
 	public void testInputOutputArgs() throws Exception {
-		ConfigurableApplicationContext context = SpringApplication.run(TestInputOutputArgs.class, "--server.port=0");
+		ConfigurableApplicationContext context = SpringApplication.run(TestInputOutputArgs.class, "--server.port=0", "--spring.cloud.stream.bindings.output.contentType=text/plain", "--spring.jmx.enabled=false");
 		sendMessageAndValidate(context);
 	}
 
@@ -60,7 +61,7 @@ public class StreamListenerWithAnnotatedInputOutputArgsTests {
 			SpringApplication.run(TestInputOutputArgsWithMoreParameters.class, "--server.port=0");
 			fail("Expected exception: " + INVALID_DECLARATIVE_METHOD_PARAMETERS);
 		}
-		catch (BeanCreationException e) {
+		catch (IllegalArgumentException e) {
 			assertThat(e.getMessage()).contains(INVALID_DECLARATIVE_METHOD_PARAMETERS);
 		}
 	}
@@ -68,29 +69,27 @@ public class StreamListenerWithAnnotatedInputOutputArgsTests {
 	@Test
 	public void testInputOutputArgsWithInvalidBindableTarget() {
 		try {
-			SpringApplication.run(TestInputOutputArgsWithInvalidBindableTarget.class, "--server.port=0");
+			SpringApplication.run(TestInputOutputArgsWithInvalidBindableTarget.class, "--server.port=0","--spring.jmx.enabled=false");
 			fail("Exception expected on using invalid bindable target as method parameter");
 		}
-		catch (BeanCreationException e) {
-			assertThat(e.getCause()).isInstanceOf(IllegalArgumentException.class);
-			assertThat(e.getCause())
-					.hasMessageContaining(StreamListenerErrorMessages.INVALID_DECLARATIVE_METHOD_PARAMETERS);
+		catch (IllegalArgumentException e) {
+			assertThat(e.getMessage()).contains(StreamListenerErrorMessages.INVALID_DECLARATIVE_METHOD_PARAMETERS);
 		}
 	}
 
 	@Test
 	public void testInputOutputArgsWithParameterOrderChanged() throws Exception {
 		ConfigurableApplicationContext context = SpringApplication
-				.run(TestInputOutputArgsWithParameterOrderChanged.class, "--server.port=0");
+				.run(TestInputOutputArgsWithParameterOrderChanged.class, "--server.port=0", "--spring.cloud.stream.bindings.output.contentType=text/plain","--spring.jmx.enabled=false");
 		sendMessageAndValidate(context);
 	}
 
+	@SuppressWarnings("unchecked")
 	private void sendMessageAndValidate(ConfigurableApplicationContext context) throws InterruptedException {
-		@SuppressWarnings("unchecked")
 		Processor processor = context.getBean(Processor.class);
 		processor.input().send(MessageBuilder.withPayload("hello").setHeader("contentType", "text/plain").build());
 		MessageCollector messageCollector = context.getBean(MessageCollector.class);
-		Message<?> result = messageCollector.forChannel(processor.output()).poll(1000, TimeUnit.MILLISECONDS);
+		Message<String> result = (Message<String>) messageCollector.forChannel(processor.output()).poll(1000, TimeUnit.MILLISECONDS);
 		assertThat(result).isNotNull();
 		assertThat(result.getPayload()).isEqualTo("HELLO");
 		context.close();

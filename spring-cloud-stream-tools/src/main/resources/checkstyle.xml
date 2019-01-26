@@ -85,7 +85,12 @@
         <module name="AvoidStarImport"/>
         <module name="AvoidStaticImport">
             <property name="excludes"
-                      value="org.junit.Assert.*,org.mockito.Mockito.*,org.mockito.Matchers.*,org.hamcrest.Matchers.*,org.assertj.core.api.Assertions.*"/>
+                      value="org.junit.Assert.*,
+                      org.mockito.Mockito.*,
+                      org.mockito.BDDMockito.*,
+                      org.mockito.ArgumentMatchers.*,
+                      org.hamcrest.Matchers.*,
+                      org.assertj.core.api.Assertions.*"/>
         </module>
         <module name="FallThrough"/>
         <module name="ImportOrder">
@@ -100,13 +105,14 @@
         </module>
         <module name="RedundantImport"/>
         <module name="ReturnCount">
-            <property name="max" value="0"/>
-            <property name="tokens" value="CTOR_DEF"/>
-        </module>
-        <module name="ReturnCount">
             <property name="max" value="1"/>
             <property name="tokens" value="LAMBDA"/>
         </module>
+        <module name="ReturnCount">
+            <property name="max" value="1"/>
+            <property name="tokens" value="CTOR_DEF"/>
+        </module>
+
         <!--
         <module name="ReturnCount">
             <property name="max" value="3"/>

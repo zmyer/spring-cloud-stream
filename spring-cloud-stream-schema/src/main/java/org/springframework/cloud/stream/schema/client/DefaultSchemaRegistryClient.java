@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,12 +31,21 @@ import org.springframework.web.client.RestTemplate;
  */
 public class DefaultSchemaRegistryClient implements SchemaRegistryClient {
 
-	private RestTemplate template;
+	private RestTemplate restTemplate;
 
 	private String endpoint = "http://localhost:8990";
 
 	public DefaultSchemaRegistryClient() {
-		this.template = new RestTemplate();
+		this(new RestTemplate());
+	}
+
+	public DefaultSchemaRegistryClient(RestTemplate restTemplate) {
+		Assert.notNull(restTemplate,"'restTemplate' must not be null.");
+		this.restTemplate = restTemplate;
+	}
+
+	protected String getEndpoint() {
+		return this.endpoint;
 	}
 
 	public void setEndpoint(String endpoint) {
@@ -44,13 +53,18 @@ public class DefaultSchemaRegistryClient implements SchemaRegistryClient {
 		this.endpoint = endpoint;
 	}
 
+	protected RestTemplate getRestTemplate() {
+		return this.restTemplate;
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	@Override
 	public SchemaRegistrationResponse register(String subject, String format, String schema) {
 		Map<String, String> requestBody = new HashMap<>();
 		requestBody.put("subject", subject);
 		requestBody.put("format", format);
 		requestBody.put("definition", schema);
-		ResponseEntity<Map> responseEntity = this.template.postForEntity(this.endpoint, requestBody, Map.class);
+		ResponseEntity<Map> responseEntity = this.restTemplate.postForEntity(this.endpoint, requestBody, Map.class);
 		if (responseEntity.getStatusCode().is2xxSuccessful()) {
 			SchemaRegistrationResponse registrationResponse = new SchemaRegistrationResponse();
 			Map<String, Object> responseBody = (Map<String, Object>) responseEntity.getBody();
@@ -63,9 +77,10 @@ public class DefaultSchemaRegistryClient implements SchemaRegistryClient {
 		throw new RuntimeException("Failed to register schema: " + responseEntity.toString());
 	}
 
+	@SuppressWarnings("rawtypes")
 	@Override
 	public String fetch(SchemaReference schemaReference) {
-		ResponseEntity<Map> responseEntity = this.template.getForEntity(
+		ResponseEntity<Map> responseEntity = this.restTemplate.getForEntity(
 				this.endpoint + "/" + schemaReference.getSubject() + "/" + schemaReference
 						.getFormat() + "/v" + schemaReference
 								.getVersion(),
@@ -76,9 +91,10 @@ public class DefaultSchemaRegistryClient implements SchemaRegistryClient {
 		return (String) responseEntity.getBody().get("definition");
 	}
 
+	@SuppressWarnings("rawtypes")
 	@Override
 	public String fetch(int id) {
-		ResponseEntity<Map> responseEntity = this.template.getForEntity(
+		ResponseEntity<Map> responseEntity = this.restTemplate.getForEntity(
 				this.endpoint + "/schemas/" + id, Map.class);
 		if (!responseEntity.getStatusCode().is2xxSuccessful()) {
 			throw new RuntimeException("Failed to fetch schema: " + responseEntity.toString());

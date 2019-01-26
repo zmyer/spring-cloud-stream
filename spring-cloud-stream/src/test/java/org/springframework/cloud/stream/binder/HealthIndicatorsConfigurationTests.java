@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2016-2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,8 +25,10 @@ import org.junit.Test;
 
 import org.springframework.beans.DirectFieldAccessor;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.actuate.health.CompositeHealthIndicator;
 import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.actuate.health.HealthIndicatorRegistry;
 import org.springframework.boot.actuate.health.OrderedHealthAggregator;
 import org.springframework.boot.actuate.health.Status;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -64,15 +66,17 @@ public class HealthIndicatorsConfigurationTests {
 		}
 		ClassLoader classLoader = new URLClassLoader(urls,
 				BinderFactoryConfigurationTests.class.getClassLoader());
+
 		return new SpringApplicationBuilder(SimpleSource.class)
 				.resourceLoader(new DefaultResourceLoader(classLoader))
-				.properties(properties).web(false).run();
+				.properties(properties).web(WebApplicationType.NONE).run();
 	}
 
+	@SuppressWarnings("rawtypes")
 	@Test
 	public void healthIndicatorsCheck() throws Exception {
 		ConfigurableApplicationContext context = createBinderTestContext(new String[] { "binder1", "binder2" },
-				"spring.cloud.stream.defaultBinder:binder2");
+				"spring.cloud.stream.defaultBinder:binder2", "--spring.jmx.enabled=false");
 		Binder binder1 = context.getBean(BinderFactory.class).getBinder("binder1", MessageChannel.class);
 		assertThat(binder1).isInstanceOf(StubBinder1.class);
 		Binder binder2 = context.getBean(BinderFactory.class).getBinder("binder2", MessageChannel.class);
@@ -81,11 +85,12 @@ public class HealthIndicatorsConfigurationTests {
 				CompositeHealthIndicator.class);
 		DirectFieldAccessor directFieldAccessor = new DirectFieldAccessor(bindersHealthIndicator);
 		assertThat(bindersHealthIndicator).isNotNull();
-		assertThat(context.getBean("testHealthIndicator1", CompositeHealthIndicator.class)).isNotNull();
-		assertThat(context.getBean("testHealthIndicator2", CompositeHealthIndicator.class)).isNotNull();
-		@SuppressWarnings("unchecked")
-		Map<String, HealthIndicator> healthIndicators = (Map<String, HealthIndicator>) directFieldAccessor
-				.getPropertyValue("indicators");
+		assertThat(context.getBean("test1HealthIndicator1", CompositeHealthIndicator.class)).isNotNull();
+		assertThat(context.getBean("test2HealthIndicator2", CompositeHealthIndicator.class)).isNotNull();
+
+		HealthIndicatorRegistry registry = (HealthIndicatorRegistry)directFieldAccessor.getPropertyValue("registry");
+
+		Map<String, HealthIndicator> healthIndicators = registry.getAll();
 		assertThat(healthIndicators).containsKey("binder1");
 		assertThat(healthIndicators.get("binder1").health().getStatus()).isEqualTo(Status.UP);
 		assertThat(healthIndicators).containsKey("binder2");
@@ -93,12 +98,14 @@ public class HealthIndicatorsConfigurationTests {
 		context.close();
 	}
 
+	@SuppressWarnings("rawtypes")
 	@Test
 	public void healthIndicatorsCheckWhenDisabled() throws Exception {
 		ConfigurableApplicationContext context = createBinderTestContext(
 				new String[] { "binder1", "binder2" },
 				"spring.cloud.stream.defaultBinder:binder2",
-				"management.health.binders.enabled:false");
+				"management.health.binders.enabled:false",
+				"--spring.jmx.enabled=false");
 
 		Binder binder1 = context.getBean(BinderFactory.class).getBinder("binder1", MessageChannel.class);
 		assertThat(binder1).isInstanceOf(StubBinder1.class);
@@ -110,8 +117,8 @@ public class HealthIndicatorsConfigurationTests {
 		}
 		catch (NoSuchBeanDefinitionException e) {
 		}
-		assertThat(context.getBean("testHealthIndicator1", CompositeHealthIndicator.class)).isNotNull();
-		assertThat(context.getBean("testHealthIndicator2", CompositeHealthIndicator.class)).isNotNull();
+		assertThat(context.getBean("test1HealthIndicator1", CompositeHealthIndicator.class)).isNotNull();
+		assertThat(context.getBean("test2HealthIndicator2", CompositeHealthIndicator.class)).isNotNull();
 		context.close();
 	}
 
@@ -123,12 +130,12 @@ public class HealthIndicatorsConfigurationTests {
 		static class TestConfig {
 
 			@Bean
-			public CompositeHealthIndicator testHealthIndicator1() {
+			public CompositeHealthIndicator test1HealthIndicator1() {
 				return new CompositeHealthIndicator(new OrderedHealthAggregator());
 			}
 
 			@Bean
-			public CompositeHealthIndicator testHealthIndicator2() {
+			public CompositeHealthIndicator test2HealthIndicator2() {
 				return new CompositeHealthIndicator(new OrderedHealthAggregator());
 			}
 		}
